@@ -35,6 +35,10 @@ window.MathJax = {
   <a href="https://github.com/yuecao365/text2sql_rl">GitHub</a>
 </div></div>
 
+<div class="shell">
+
+<aside class="rail" id="rail" aria-label="章节导航"></aside>
+
 <div class="wrap">
 
 <header class="mast">
@@ -958,5 +962,59 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
 </footer>
 
 </div>
+</div>
+
+<script>
+(function () {
+  // 侧栏目录：从页首目录克隆，避免维护两份
+  var toc = document.querySelector('.toc > ol');
+  var rail = document.getElementById('rail');
+  if (!toc || !rail) return;
+
+  var h = document.createElement('div');
+  h.className = 'rail-h';
+  h.textContent = '目录';
+  rail.appendChild(h);
+  rail.appendChild(toc.cloneNode(true));
+
+  // 滚动高亮：记录每个锚点的位置，取当前视口顶部之上最近的一个
+  var links = Array.prototype.slice.call(rail.querySelectorAll('a[href^="#"]'));
+  var targets = links
+    .map(function (a) {
+      return { link: a, el: document.getElementById(a.getAttribute('href').slice(1)) };
+    })
+    .filter(function (t) { return t.el; });
+  if (!targets.length) return;
+
+  var current = null;
+  var ticking = false;
+
+  function update() {
+    ticking = false;
+    var line = window.scrollY + 120;
+    var found = targets[0];
+    for (var i = 0; i < targets.length; i++) {
+      if (targets[i].el.getBoundingClientRect().top + window.scrollY <= line) found = targets[i];
+      else break;
+    }
+    if (found === current) return;
+    if (current) current.link.classList.remove('active');
+    found.link.classList.add('active');
+    current = found;
+
+    // 保证高亮项在侧栏可视范围内
+    var r = found.link.getBoundingClientRect(), rr = rail.getBoundingClientRect();
+    if (r.top < rr.top || r.bottom > rr.bottom) {
+      rail.scrollTop += r.top - rr.top - rr.height / 3;
+    }
+  }
+
+  window.addEventListener('scroll', function () {
+    if (!ticking) { ticking = true; requestAnimationFrame(update); }
+  }, { passive: true });
+  window.addEventListener('resize', update, { passive: true });
+  update();
+})();
+</script>
 </body>
 </html>
