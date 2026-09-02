@@ -171,11 +171,33 @@ ul,ol{margin:0 0 1rem; padding-left:1.35rem;}
 li{margin-bottom:.32rem;}
 li::marker{color:var(--ink-3);}
 
-/* ---------- 公式 ---------- */
-mjx-container[display="true"]{
-  margin:1.1rem 0 !important; overflow-x:auto; overflow-y:hidden; padding:.2rem 0;
-}
+/* ---------- 公式 ----------
+   display 公式做成独立区块：有底色与边框，并允许比正文列宽，
+   宽度上限 = 正文两侧可用空白，避免与侧栏或视口边缘相撞。 */
 mjx-container{color:var(--ink);}
+mjx-container[display="true"]{
+  display:block; box-sizing:border-box;
+  margin:1.2rem 0 !important; padding:.9rem 1.2rem;
+  background:var(--surface); border:1px solid var(--rule);
+  overflow-x:auto; overflow-y:hidden;
+  scrollbar-width:thin;
+}
+/* 单栏居中区间：两侧空白 = (视口 − 正文) / 2 */
+@media (min-width:900px) and (max-width:1359px){
+  mjx-container[display="true"]{
+    --bo:clamp(0px, calc((100vw - var(--measure)) / 2 - 1.5rem), 9rem);
+    margin-left:calc(-1 * var(--bo)) !important;
+    margin-right:calc(-1 * var(--bo)) !important;
+  }
+}
+/* 侧栏布局区间：两侧空白 = (视口 − 侧栏列 − 正文) / 2 */
+@media (min-width:1360px){
+  mjx-container[display="true"]{
+    --bo:clamp(0px, calc((100vw - var(--rail-w) - var(--rail-gap) - var(--measure)) / 2 - 1.5rem), 9rem);
+    margin-left:calc(-1 * var(--bo)) !important;
+    margin-right:calc(-1 * var(--bo)) !important;
+  }
+}
 
 /* ---------- 代码 ---------- */
 code{
