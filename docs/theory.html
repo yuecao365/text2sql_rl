@@ -4,22 +4,17 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Agentic RL 理论笔记</title>
-<meta name="description" content="从策略梯度到多轮 agent 训练：REINFORCE、PPO、GRPO、DAPO、observation masking、credit assignment、RLVR 与训练基础设施的系统整理。">
+<meta name="description" content="从一次 GRPO 更新的直觉出发，逐层深入到可验证奖励、策略梯度、GRPO 修正、多轮 masking 与 credit assignment、以及训练基础设施。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
-<link rel="stylesheet" href="assets/notes.css?v=3">
+<link rel="stylesheet" href="assets/notes.css?v=4">
 <script>
 window.MathJax = {
   tex: {
     inlineMath: [['\\(', '\\)']],
     displayMath: [['\\[', '\\]']],
-    processEscapes: true,
-    macros: {
-      E: ["\\mathbb{E}"],
-      D: ["\\mathcal{D}"],
-      KL: ["\\mathrm{KL}"]
-    }
+    processEscapes: true
   },
   options: { skipHtmlTags: ['script','noscript','style','textarea','pre','code'] }
 };
@@ -44,77 +39,91 @@ window.MathJax = {
 <header class="mast">
   <div class="eyebrow">Theory Notes</div>
   <h1>Agentic RL 理论笔记</h1>
-  <p class="dek">从策略梯度的一行恒等式，推到多轮 agent 训练里每一个具体的设计决策。重点不在罗列算法，而在把"为什么这样设计"的因果链补完整——每一条工程约定，都能追溯到前面某个公式。</p>
+  <p class="dek">从一次更新到底发生了什么讲起，逐层深入到奖励设计、策略梯度、GRPO 的各项修正、多轮场景的特有难题，以及让这一切真正跑起来的工程约束。前两部分不含公式。</p>
   <div class="meta">
     <span>2026-09</span>
-    <span>Policy Gradient · PPO · GRPO · DAPO · RLVR</span>
+    <span>RLVR · Policy Gradient · GRPO · DAPO · Multi-turn</span>
   </div>
 </header>
 
 <nav class="toc">
   <div class="toc-title">目录</div>
   <ol>
-    <li><a href="#p0">问题设定与记号</a>
+    <li><a href="#p0">全貌与主线</a>
       <ul>
-        <li><a href="#s0-1">两种视角</a></li>
-        <li><a href="#s0-2">记号表</a></li>
-        <li><a href="#s0-3">折扣因子</a></li>
+        <li><a href="#s0-1">从生成到行动</a></li>
+        <li><a href="#s0-2">一次更新的循环</a></li>
+        <li><a href="#s0-3">三个问题</a></li>
+        <li><a href="#s0-4">阅读路线</a></li>
       </ul>
     </li>
-    <li><a href="#p1">策略梯度基础</a>
+    <li><a href="#p1">先建立直觉</a>
       <ul>
-        <li><a href="#s1-1">目标函数</a></li>
-        <li><a href="#s1-2">REINFORCE</a></li>
-        <li><a href="#s1-3">Baseline 定理</a></li>
-        <li><a href="#s1-4">Advantage 与 Actor-Critic</a></li>
-        <li><a href="#s1-5">GAE</a></li>
+        <li><a href="#s1-1">一道题，八次尝试</a></li>
+        <li><a href="#s1-2">为什么要减平均</a></li>
+        <li><a href="#s1-3">三个立刻出现的麻烦</a></li>
       </ul>
     </li>
-    <li><a href="#p2">从 PPO 到 GRPO</a>
+    <li><a href="#p2">奖励：分数从哪来</a>
       <ul>
-        <li><a href="#s2-1">重要性采样</a></li>
-        <li><a href="#s2-2">信任域与 clip</a></li>
-        <li><a href="#s2-3">为什么是 min</a></li>
-        <li><a href="#s2-4">GRPO</a></li>
-        <li><a href="#s2-5">两个推论</a></li>
-        <li><a href="#s2-6">DAPO 四改</a></li>
-        <li><a href="#s2-7">Dr. GRPO</a></li>
-        <li><a href="#s2-8">KL 正则</a></li>
+        <li><a href="#s2-1">RLVR</a></li>
+        <li><a href="#s2-2">与偏好类方法的分界</a></li>
+        <li><a href="#s2-3">验证器设计</a></li>
+        <li><a href="#s2-4">Goodhart 定律</a></li>
+        <li><a href="#s2-5">Reward Hacking</a></li>
       </ul>
     </li>
-    <li><a href="#p3">多轮 Agentic RL</a>
+    <li><a href="#p3">形式化：策略梯度</a>
       <ul>
-        <li><a href="#s3-1">轨迹结构</a></li>
-        <li><a href="#s3-2">Observation Masking</a></li>
-        <li><a href="#s3-3">Mask 的构造与验证</a></li>
-        <li><a href="#s3-4">Credit Assignment</a></li>
-        <li><a href="#s3-5">稀疏奖励的稠密化</a></li>
-        <li><a href="#s3-6">异常轨迹</a></li>
-        <li><a href="#s3-7">多轮特有指标</a></li>
+        <li><a href="#s3-1">两种视角</a></li>
+        <li><a href="#s3-2">目标函数</a></li>
+        <li><a href="#s3-3">Baseline 定理</a></li>
+        <li><a href="#s3-4">Actor-Critic 与 GAE</a></li>
+        <li><a href="#s3-5">两条估计路线</a></li>
       </ul>
     </li>
-    <li><a href="#p4">RLVR 与 Reward 设计</a>
+    <li><a href="#p4">GRPO 及其修正</a>
       <ul>
-        <li><a href="#s4-1">RLVR</a></li>
-        <li><a href="#s4-2">与偏好类方法的分界</a></li>
-        <li><a href="#s4-3">验证器设计</a></li>
-        <li><a href="#s4-4">Goodhart 与 shaping</a></li>
-        <li><a href="#s4-5">Reward Hacking</a></li>
+        <li><a href="#s4-1">重要性采样</a></li>
+        <li><a href="#s4-2">信任域与 clip</a></li>
+        <li><a href="#s4-3">为什么是 min</a></li>
+        <li><a href="#s4-4">GRPO 目标函数</a></li>
+        <li><a href="#s4-5">两个推论</a></li>
+        <li><a href="#s4-6">DAPO 四改</a></li>
+        <li><a href="#s4-7">Dr. GRPO</a></li>
+        <li><a href="#s4-8">KL 正则</a></li>
       </ul>
     </li>
-    <li><a href="#p5">训练基础设施</a>
+    <li><a href="#p5">多轮：Agentic 的部分</a>
       <ul>
-        <li><a href="#s5-1">训推分离</a></li>
-        <li><a href="#s5-2">权重同步</a></li>
-        <li><a href="#s5-3">On-policy 程度</a></li>
-        <li><a href="#s5-4">显存构成</a></li>
-        <li><a href="#s5-5">LoRA in RL</a></li>
-        <li><a href="#s5-6">序列长度</a></li>
-        <li><a href="#s5-7">分布式</a></li>
+        <li><a href="#s5-1">多了什么</a></li>
+        <li><a href="#s5-2">轨迹结构</a></li>
+        <li><a href="#s5-3">Observation Masking</a></li>
+        <li><a href="#s5-4">Mask 的构造与验证</a></li>
+        <li><a href="#s5-5">Credit Assignment</a></li>
+        <li><a href="#s5-6">稀疏奖励的稠密化</a></li>
+        <li><a href="#s5-7">异常轨迹</a></li>
+        <li><a href="#s5-8">多轮特有指标</a></li>
       </ul>
     </li>
-    <li><a href="#p6">方法族的边界</a></li>
-    <li><a href="#refs">参考文献</a></li>
+    <li><a href="#p6">工程：让它跑起来</a>
+      <ul>
+        <li><a href="#s6-1">训推分离</a></li>
+        <li><a href="#s6-2">权重同步</a></li>
+        <li><a href="#s6-3">On-policy 程度</a></li>
+        <li><a href="#s6-4">显存构成</a></li>
+        <li><a href="#s6-5">LoRA in RL</a></li>
+        <li><a href="#s6-6">序列长度</a></li>
+        <li><a href="#s6-7">分布式</a></li>
+      </ul>
+    </li>
+    <li><a href="#p7">方法族的边界</a></li>
+    <li><a href="#appendix">附录：记号与文献</a>
+      <ul>
+        <li><a href="#notation">记号表</a></li>
+        <li><a href="#refs">参考文献</a></li>
+      </ul>
+    </li>
   </ol>
 </nav>
 
@@ -122,80 +131,301 @@ window.MathJax = {
 <section class="part" id="p0">
   <div class="part-head">
     <div class="part-num">Part 00</div>
-    <h2>问题设定与记号</h2>
-    <p class="part-sub">把语言模型的生成过程放进强化学习的形式框架里</p>
+    <h2>全貌与主线</h2>
+    <p class="part-sub">这一部分没有公式。目的是在进入细节之前，先知道细节是为了解决什么。</p>
   </div>
 
-  <p class="lede">几乎所有关于 LLM 强化学习的困惑，源头都是没有分清"把生成看成什么"。同一个算法，在 token-level MDP 和 sequence-level bandit 两种视角下，公式长得不一样，直觉也不一样。先把这件事定下来。</p>
+  <h3 id="s0-1">0.1 从"生成文本"到"在环境中行动"</h3>
 
-  <h3 id="s0-1">0.1 两种视角</h3>
-
-  <p>给定 prompt \(x\)，语言模型自回归地产生回复 \(y = (y_1, \dots, y_{|y|})\)。这个过程可以用两种方式建模。</p>
-
-  <h4>视角一：token-level MDP</h4>
-  <p>把每个 token 当成一个动作。状态是"到目前为止的全部上下文"：</p>
-  \[ s_t = (x, y_{&lt;t}), \qquad a_t = y_t, \qquad s_{t+1} = (x, y_{&lt;t} \oplus y_t) \]
-  <p>状态转移是<strong>确定性</strong>的（拼接一个 token），这是 LLM 场景的特殊性——不同于常规 RL 里环境有随机转移。奖励通常只在终止时给出：\(r_t = 0\) 对 \(t < |y|\)，\(r_{|y|} = R(x,y)\)。</p>
-
-  <h4>视角二：sequence-level bandit</h4>
-  <p>把<strong>整条回复</strong>当成一个动作。没有中间状态，一步决策，一次奖励：</p>
-  \[ a = y \sim \pi_\theta(\cdot \mid x), \qquad r = R(x, y) \]
-  <p>这就是一个 contextual bandit：上下文是 \(x\)，动作是整条回复，奖励是一个标量。</p>
-
-  <div class="box key">
-    <span class="lbl">为什么 RLVR 文献默认第二种</span>
-    <p>因为奖励本来就只在序列末尾产生，中间 token 没有任何真实的即时奖励。既然如此，引入 token-level 的值函数 \(V(s_t)\) 就是在<strong>估计一个由稀疏信号支撑的、本质上难以估准的量</strong>。sequence-level 视角直接承认"我只有一个终点标量"，反而更诚实，公式也更简洁。</p>
-    <p>代价是放弃了 token 级的 credit 分辨率——序列内部哪个 token 更重要，模型只能靠梯度自己去分摊。这个代价在<strong>多轮</strong>场景会重新变成一个必须正面处理的问题（见 <a href="#s3-4">3.4</a>）。</p>
-  </div>
-
-  <p>本文默认使用 sequence-level 视角，只在讨论 GAE 和 token 级 loss 归一化时切回 token-level。</p>
-
-  <h3 id="s0-2">0.2 记号表</h3>
+  <p>先把三种训练范式的差别摆清楚，因为后面所有的技术选择都由这个差别决定。</p>
 
   <div class="tw"><table>
-    <thead><tr><th>符号</th><th>含义</th></tr></thead>
+    <thead><tr><th></th><th>监督信号是什么</th><th>信号密度</th></tr></thead>
     <tbody>
-      <tr><td class="num">\(x \sim \mathcal{D}\)</td><td>prompt，从数据分布采样</td></tr>
-      <tr><td class="num">\(y\), \(y_t\), \(y_{&lt;t}\)</td><td>回复；第 \(t\) 个 token；前 \(t-1\) 个 token</td></tr>
-      <tr><td class="num">\(\pi_\theta\)</td><td>当前策略（正在被训练的模型）</td></tr>
-      <tr><td class="num">\(\pi_{\theta_{\text{old}}}\)</td><td>行为策略（采出这批数据的那个模型）</td></tr>
-      <tr><td class="num">\(\pi_{\text{ref}}\)</td><td>参考策略（通常是 RL 起点的 SFT 模型）</td></tr>
-      <tr><td class="num">\(R(x,y)\)</td><td>奖励函数，返回标量</td></tr>
-      <tr><td class="num">\(A\)</td><td>advantage</td></tr>
-      <tr><td class="num">\(G\)</td><td>group size：同一 prompt 采样的回复条数</td></tr>
-      <tr><td class="num">\(\tau\)</td><td>轨迹（多轮场景）</td></tr>
-      <tr><td class="num">\(a_k\), \(o_k\)</td><td>第 \(k\) 轮的模型输出 / 环境返回</td></tr>
-      <tr><td class="num">\(h_k\)</td><td>第 \(k\) 轮结束时的完整历史</td></tr>
+      <tr><td><strong>预训练 / SFT</strong></td><td>标准答案。每个 token 都告诉你"这里应该是什么"</td><td>每 token 一个信号</td></tr>
+      <tr><td><strong>RL</strong></td><td>没有标准答案。模型自己产出，外部只给一个"好不好"的判断</td><td>整条输出一个标量</td></tr>
+      <tr><td><strong>Agentic RL</strong></td><td>同上，但模型可以调用工具、看到返回、再决定下一步</td><td>整条<em>轨迹</em>一个标量</td></tr>
     </tbody>
   </table></div>
 
-  <h3 id="s0-3">0.3 折扣因子</h3>
+  <p>从 SFT 到 RL，损失的是<strong>信号密度</strong>：原本每个 token 都有监督，现在整段话只换回一个数字。RL 的全部技术难度，都来自"如何用极稀疏的信号做有效更新"。</p>
 
-  <p>常规 RL 里折扣因子 \(\gamma < 1\) 有两个作用：保证无限期回报收敛，以及表达"未来的奖励不如现在值钱"。LLM 生成的场景里两个理由都不成立——序列有限长，且我们并不认为早写的 token 比晚写的更值钱。</p>
+  <p>从 RL 到 Agentic RL，多出来的是<strong>轨迹里混入了不由模型产生的内容</strong>——工具的返回、环境的报错。这一条看似不起眼，却是 agentic RL 几乎所有独有技术问题的源头：loss 该算在哪些 token 上、多轮之中谁该为结果负责、轨迹半途坏掉了怎么办。</p>
 
-  <p>所以 <strong>LLM RL 里 \(\gamma = 1\) 是默认</strong>，回报就是终点奖励本身。\(\gamma\) 重新变得有意义，是在多轮 agent 里被用作 credit assignment 的<em>启发式工具</em>——那时它不再是"未来贬值"的建模，而是"我先验地认为后面的轮次更该负责"的一个假设。这个区别很重要，见 <a href="#s3-4">3.4</a>。</p>
+  <h3 id="s0-2">0.2 一次 RL 更新的循环</h3>
+
+  <p>抛开所有算法细节，一步训练就是这五个动作：</p>
+
+<pre><code>一批 prompt
+   │
+   ├─① rollout    模型生成。agent 场景下这是"生成 → 调工具 → 读返回 → 再生成"的多轮过程
+   │
+   ├─② 打分       对每条完整轨迹给一个标量 reward
+   │
+   ├─③ 折算       把这个标量摊到轨迹里每一个 token 上，得到 advantage
+   │
+   ├─④ 更新       一次梯度步
+   │
+   └─⑤ 同步       把更新后的权重推给推理引擎，供下一轮 rollout 使用
+   │
+（回到开头）</code></pre>
+
+  <p>这五步各自都有独立的失败模式，而且失败方式完全不同：② 的失败是<em>分数不可信</em>，③ 的失败是<em>梯度方向错误</em>，④ 的失败是<em>训练发散</em>，⑤ 的失败是<em>数据与策略脱节</em>。本文基本按这个顺序展开。</p>
+
+  <h3 id="s0-3">0.3 贯穿全文的三个问题</h3>
+
+  <p>上面五步可以归成三个问题。<strong>本文的每一部分都在回答其中之一，各部分标题下方会标注它属于哪一个。</strong></p>
+
+  <div class="tw"><table>
+    <thead><tr><th>问题</th><th>具体是什么</th><th>在哪讲</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>① 分数从哪来</strong></td>
+        <td>谁来判断一条轨迹好不好？这个判断可靠吗？模型能不能不解决问题就骗到分？</td>
+        <td>Part 2</td>
+      </tr>
+      <tr>
+        <td><strong>② 分数怎么变成梯度</strong></td>
+        <td>一个标量怎么摊到几千个 token、若干个轮次上？摊错了会怎样？</td>
+        <td>Part 3、4、5</td>
+      </tr>
+      <tr>
+        <td><strong>③ 怎么让它不崩</strong></td>
+        <td>一步能走多远？探索怎么维持？显存和吞吐够不够？</td>
+        <td>Part 4、6</td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <p>这三个问题不是并列的知识点，而是<strong>递进的依赖关系</strong>：没有可信的分数，后面全是空的；分数摊错了，训练看起来在动其实在学错东西；前两者都对了，还可能死在稳定性和显存上。</p>
+
+  <h3 id="s0-4">0.4 阅读路线</h3>
+
+  <ul>
+    <li><strong>只想知道大概</strong>：读 Part 0 和 1 就够了，两部分都不含公式。</li>
+    <li><strong>想搞懂算法为什么长这样</strong>：加读 Part 3、4。Part 3 是数学地基，Part 4 是当前主流算法的全部细节。</li>
+    <li><strong>要真的动手训练 agent</strong>：Part 5、6 是会反复回来查的部分。</li>
+    <li><strong>准备面试</strong>：Part 2 的 reward hacking、Part 5 的 masking 与 credit assignment、Part 7 的边界，是最容易被追问的三处。</li>
+  </ul>
 </section>
 
 <!-- ==================== PART 1 ==================== -->
 <section class="part" id="p1">
   <div class="part-head">
     <div class="part-num">Part 01</div>
-    <h2>策略梯度基础</h2>
-    <p class="part-sub">一个恒等式，撑起后面所有算法</p>
+    <h2>先建立直觉</h2>
+    <p class="part-sub">用一道题、八次采样，把一轮 GRPO 完整走一遍</p>
+    <span class="thread">主线 <b>②</b> 分数怎么变成梯度</span>
   </div>
 
-  <h3 id="s1-1">1.1 我们在优化什么</h3>
+  <p class="lede">这一部分同样不含公式。读完之后你会知道 GRPO 在做一件多么朴素的事，以及为什么这件朴素的事需要后面那么多修补。Part 3 和 4 做的全部工作，就是把下面这几段话变成严谨的数学。</p>
+
+  <h3 id="s1-1">1.1 一道题，八次尝试</h3>
+
+  <p>拿一道有明确对错的题——一道数学题、一个编程任务、一次工具调用。让模型对<strong>同一道题采样 8 次</strong>；因为采样有随机性，8 次的结果会不一样。假设其中 3 次做对，5 次做错。</p>
+
+<pre><code>题目：同一个 prompt
+采样：8 条回复
+打分：3 条对（reward = 1），5 条错（reward = 0）
+平均：0.375</code></pre>
+
+  <p>现在做更新，规则只有一句话：</p>
+
+  <div class="box key">
+    <span class="lbl">GRPO 的全部直觉</span>
+    <p><strong>比这 8 次的平均水平好的，推高；比平均差的，压低。好或差多少，就按差值成比例。</strong></p>
+    <p>那 3 条做对的：比平均好 0.625，推高。<br>
+       那 5 条做错的：比平均差 0.375，压低。</p>
+  </div>
+
+  <p>"推高一条回复"具体是指：提高这条回复里<strong>每一个 token</strong> 被生成的概率；压低则相反。仅此而已——这就是一轮 GRPO 更新的核心。</p>
+
+  <h3 id="s1-2">1.2 为什么必须减掉平均</h3>
+
+  <p>这是全文第一个、也是最重要的技术点，值得单独想清楚。</p>
+
+  <p>假设不减平均，直接用 reward 当权重。那么做对的 3 条各推高 1 个单位，做错的 5 条各推高 0 个单位——<strong>没有任何一条被压低</strong>。模型只学到"这些都还行"，学不到区分。</p>
+
+  <p>更糟的情况：如果打分不是 0/1，而是比如 0.6 和 0.9，那么<strong>所有轨迹都会被推高</strong>，包括那些明显更差的。模型的行为分布整体上移，但内部的相对优劣没有被强化——梯度里绝大部分是与"好坏"无关的共同偏移。</p>
+
+  <p>减掉平均之后，信号变成<strong>相对的</strong>：只有超过"我自己当前水平"的才被强化，低于的被抑制。这个被减掉的量叫 <strong>baseline</strong>，减完的结果叫 <strong>advantage</strong>。</p>
+
+  <div class="box">
+    <span class="lbl">记住这句话</span>
+    <p>Advantage 的物理意义是：<strong>这条回复比"我自己在这道题上的平均水平"好多少。</strong> 后面所有算法的差异，本质上都只是<em>如何估计这个平均水平</em>的差异。</p>
+  </div>
+
+  <h3 id="s1-3">1.3 三个立刻出现的麻烦</h3>
+
+  <p>上面那个朴素规则，一落地就会撞上三个问题。它们恰好对应本文后面的主要篇幅。</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>麻烦</th><th>问题</th><th>后文</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><strong>8 条全对或全错怎么办</strong></td>
+        <td>平均值等于每一条，所有 advantage 都是 0。这道题采样 8 次，换回零梯度——算力白花了</td>
+        <td><a href="#s4-5">4.5</a> 推论 A</td>
+      </tr>
+      <tr>
+        <td><strong>一条回复几千个 token，凭什么每个都担同样的责任</strong></td>
+        <td>推理链里可能只有一步是关键的，其余是套话。多轮场景更严重：5 轮里哪一轮该背锅？</td>
+        <td><a href="#s5-5">5.5</a> credit assignment</td>
+      </tr>
+      <tr>
+        <td><strong>如果不解决问题也能拿到分呢</strong></td>
+        <td>模型优化的是你写下的打分规则，不是你心里想的目标。规则有缝，它一定会找到</td>
+        <td><a href="#s2-5">2.5</a> reward hacking</td>
+      </tr>
+    </tbody>
+  </table></div>
+
+  <p>第三个问题最先需要回答——因为如果分数本身不可信，后面讨论"怎么用分数"就毫无意义。所以下一部分先讲奖励。</p>
+</section>
+
+<!-- ==================== PART 2 ==================== -->
+<section class="part" id="p2">
+  <div class="part-head">
+    <div class="part-num">Part 02</div>
+    <h2>奖励：分数从哪来</h2>
+    <p class="part-sub">判断依据是否可信，决定了后面一切工作是否有意义</p>
+    <span class="thread">主线 <b>①</b> 分数从哪来</span>
+  </div>
+
+  <h3 id="s2-1">2.1 RLVR：用程序来判分</h3>
+
+  <p>Reinforcement Learning with <strong>Verifiable</strong> Rewards：奖励来自一个确定性的、可程序化执行的验证过程——数学答案是否等价、代码是否通过测试、工具调用是否达成目标状态。</p>
+
+  <p>它成为后训练主流范式的原因：</p>
+  <ul>
+    <li><strong>不需要训练奖励模型</strong>。省下一个同量级模型的训练与推理，也省下偏好标注的成本。</li>
+    <li><strong>信号可无限扩展</strong>。有多少可验证的题就有多少信号，不受标注预算约束。</li>
+    <li><strong>漏洞是可见的</strong>。奖励仍可能被钻空子，但漏洞在<em>你写下的验证逻辑</em>里，可读、可查、可修；而奖励模型的漏洞藏在一个黑箱网络的参数中。</li>
+    <li><strong>与 group-based 方法天然契合</strong>。0/1 奖励加组内归一化，是一个信噪比很高的信号。</li>
+  </ul>
+
+  <h3 id="s2-2">2.2 与偏好类方法的分界</h3>
+
+  <div class="tw"><table>
+    <thead><tr><th></th><th>RLVR</th><th>RLHF / DPO</th></tr></thead>
+    <tbody>
+      <tr><td>奖励来源</td><td>程序验证</td><td>人类偏好（经奖励模型，或 DPO 隐式建模）</td></tr>
+      <tr><td>是否需要 RM</td><td>否</td><td>是（DPO 将其隐式化）</td></tr>
+      <tr><td>适用任务</td><td>存在客观对错：数学、代码、工具调用</td><td>不存在客观对错：有用性、安全性、风格</td></tr>
+      <tr><td>主要风险</td><td>验证逻辑<em>定义</em>上的漏洞</td><td>RM 过拟合、分布外失效、奖励过优化</td></tr>
+      <tr><td>KL 约束</td><td>常可去掉（原因见 <a href="#s4-8">4.8</a>）</td><td>通常必须保留</td></tr>
+    </tbody>
+  </table></div>
+
+  <p>两者不是竞争关系而是互补关系。工业界的完整流程通常是 SFT → RLVR（提升硬能力）→ 偏好对齐（修风格与安全）。清楚地知道自己的方法覆盖哪一段、不覆盖哪一段，本身就是理解深度的体现。</p>
+
+  <h3 id="s2-3">2.3 验证器设计的三个维度</h3>
+
+  <p>"可验证"听起来是二值的，实际上验证器的设计有大量自由度，而每个选择都会改变模型最终学成什么样。</p>
+
+  <h4>等价性：什么算"对"</h4>
+  <p>同一个正确答案往往有多种表达：数学里 \(\tfrac{1}{2}\) 与 \(0.5\)，代码里不同但等效的实现，结构化查询里不同的连接顺序。验证器必须显式定义等价类。</p>
+  <p>两类误差方向相反：<strong>基于文本或结构匹配</strong>的验证器会把等价的不同写法判错，<strong>系统性低估</strong>；<strong>基于执行结果</strong>的验证器会因数据巧合把错误答案判对，<strong>系统性高估</strong>。前者惩罚了正确的多样性，后者奖励了错误的运气——两者都会被模型察觉并利用。</p>
+
+  <h4>严格性：宽严的代价</h4>
+  <p>验证器过宽，模型学会钻空子；过严，大量正确答案被判错，等价于给训练注入标签噪声，并且会压低组内奖励方差（见 <a href="#s4-5">4.5</a> 推论 A，方差被压低意味着梯度信号被压低）。</p>
+  <p><strong>严格性必须在训练开始前确定并冻结。</strong> 中途修改会让前后的实验数字不可比，这是很多实验白跑的原因。</p>
+
+  <h4>速度：训练验证器与评测验证器是两套东西</h4>
+  <div class="box warn">
+    <span class="lbl">一个常见且代价高昂的混淆</span>
+    <p>严谨的评测套件往往很慢（多组测试用例、多个扰动环境、超时保护）。但训练时验证器被调用的次数是 <code>batch × G × 轮数</code>，量级在每步数千次。<strong>把评测套件直接放进 rollout 循环会让训练吞吐塌掉。</strong></p>
+    <p>正确做法是两套实现：训练用快速验证器，最终数字用官方评测套件。<strong>但必须在一个子集上校验两者结论一致</strong>——如果训练验证器比评测宽松，模型就是在朝着一个注定会被评测判错的方向优化，而你在训练曲线上完全看不出来。</p>
+  </div>
+
+  <h3 id="s2-4">2.4 Goodhart 定律</h3>
+
+  <blockquote style="margin:1.3rem 0; padding-left:1rem; border-left:2px solid var(--rule); color:var(--ink-2); font-style:italic;">
+    当一个指标变成目标，它就不再是一个好指标。
+  </blockquote>
+
+  <p>在 RL 里这条定律有一个精确的表述：<strong>模型优化的是你写下的奖励函数，不是你心里想的目标。</strong> 两者之间的任何缝隙，都会在足够多的采样中被找到并利用。优化压力越大，缝隙暴露得越彻底。</p>
+
+  <p>Reward shaping——为了加速收敛而添加中间奖励项——是缝隙的主要来源。一个通用的教科书式案例：</p>
+
+<pre><code>目标：希望 agent 高效地完成任务
+做法：对每一次工具调用施加固定负奖励，鼓励"少走弯路"
+
+实际学到的：调用工具是有成本的
+           → 减少调用 → 不调用 → 直接凭猜测给出答案
+
+观察到的现象：平均轮数 ↓、工具调用率 ↓、错误恢复率 ↓
+             而总成功率可能几乎不变 —— 主曲线上完全看不出问题</code></pre>
+
+  <p>根源是<strong>惩罚了行为而非结果</strong>。你想要的是"高效地做对"，写下的却是"少调用工具"，模型忠实地执行了后者。</p>
+
+  <div class="box key">
+    <span class="lbl">加 shaping 项之前的唯一检查</span>
+    <p>每引入一个奖励项，先问一句：<strong>模型能不能在不解决任务的前提下拿到它？</strong> 如果能，它一定会。</p>
+  </div>
+
+  <h3 id="s2-5">2.5 Reward Hacking 的常见形态</h3>
+
+  <ul>
+    <li><strong>利用验证器的等价类漏洞</strong>。构造"技术上通过验证但并未解决问题"的输出，例如针对测试用例特判、构造恰好绕过检查的退化答案。</li>
+    <li><strong>利用答案分布的先验</strong>。当答案空间小或分布高度不均时（是否类问题、常见数值），猜测的期望收益可能高于认真推理。</li>
+    <li><strong>利用抽取逻辑</strong>。如果答案是用正则从输出中提取的（"取最后一个代码块"），模型会学会输出多个候选来碰运气。<strong>抽取逻辑本身就是奖励函数的一部分</strong>，却常被当成无关紧要的字符串处理。</li>
+    <li><strong>利用长度与格式的间接奖励</strong>。当损失的归一化方式让长的错误回复受罚更轻时，模型会发现"写长一点"是有利的，尽管没有任何一项奖励显式鼓励长度。机制见 <a href="#s4-7">4.7</a>。</li>
+    <li><strong>用环境反馈碰运气而非理解</strong>。多轮场景特有：模型不断试探直到某次输出"看起来可行"，而非真正理解任务。这在终点奖励上与真正的理解<em>不可区分</em>，但会在平均轮数上升与首轮成功率停滞上暴露。</li>
+  </ul>
+
+  <p>防御的核心不是穷举漏洞——那做不到——而是<strong>建立能暴露 hacking 的观测体系</strong>：不要只看主奖励曲线，同时监控行为层面的分布指标（长度、轮数、调用率、格式合法率），并定期人工抽样阅读完整轨迹。</p>
+
+  <div class="box warn">
+    <span class="lbl">最实用的一条经验</span>
+    <p><strong>Reward hacking 几乎总是先表现为行为分布的异常漂移，而主指标滞后甚至完全不动。</strong> 等到成功率掉下来才发现，通常已经浪费了很多算力。</p>
+  </div>
+</section>
+
+<!-- ==================== PART 3 ==================== -->
+<section class="part" id="p3">
+  <div class="part-head">
+    <div class="part-num">Part 03</div>
+    <h2>形式化：策略梯度</h2>
+    <p class="part-sub">把 Part 1 的直觉变成公式，并证明"减平均"是合法的</p>
+    <span class="thread">主线 <b>②</b> 分数怎么变成梯度</span>
+  </div>
+
+  <p class="lede">从这里开始出现公式。核心只有一个恒等式，它证明了 Part 1 那个"减掉平均"的做法不会带来偏差——后面所有算法都建立在这一步上。记号可随时查阅<a href="#notation">附录记号表</a>。</p>
+
+  <h3 id="s3-1">3.1 两种视角</h3>
+
+  <p>给定 prompt \(x\)，语言模型自回归地产生回复 \(y = (y_1, \dots, y_{|y|})\)。这个过程可以用两种方式建模，而<strong>公式的形式取决于选哪一种</strong>。</p>
+
+  <h4>视角一：token-level MDP</h4>
+  <p>把每个 token 当成一个动作，状态是"到目前为止的全部上下文"：</p>
+  \[ s_t = (x, y_{&lt;t}), \qquad a_t = y_t, \qquad s_{t+1} = (x,\, y_{&lt;t} \oplus y_t) \]
+  <p>状态转移是<strong>确定性</strong>的（拼接一个 token），这是 LLM 场景不同于常规 RL 的地方。奖励通常只在终止时给出。</p>
+
+  <h4>视角二：sequence-level bandit</h4>
+  <p>把<strong>整条回复</strong>当成一个动作。没有中间状态，一步决策，一次奖励：</p>
+  \[ a = y \sim \pi_\theta(\cdot \mid x), \qquad r = R(x, y) \]
+
+  <div class="box key">
+    <span class="lbl">为什么 RLVR 文献默认第二种</span>
+    <p>因为奖励本来就只在序列末尾产生，中间 token 没有任何真实的即时奖励。引入 token 级的值函数 \(V(s_t)\) 等于<strong>去估计一个由稀疏信号支撑、本质上估不准的量</strong>。sequence-level 视角直接承认"我只有一个终点标量"，反而更诚实。</p>
+    <p>代价是放弃了 token 级的 credit 分辨率——这正是 <a href="#s1-3">1.3</a> 提出的第二个麻烦。它在<strong>多轮</strong>场景会重新变成必须正面处理的问题，见 <a href="#s5-5">5.5</a>。</p>
+  </div>
+
+  <p>本文默认使用 sequence-level 视角，只在讨论 GAE 和 token 级损失归一化时切回 token-level。</p>
+
+  <h3 id="s3-2">3.2 目标函数与 REINFORCE</h3>
 
   <p>目标是最大化期望奖励：</p>
   \[ J(\theta) \;=\; \mathbb{E}_{x \sim \mathcal{D},\; y \sim \pi_\theta(\cdot \mid x)} \big[\, R(x, y) \,\big] \]
 
-  <div class="box key">
+  <div class="box">
     <span class="lbl">与监督学习的根本区别</span>
-    <p>注意 \(\theta\) 出现在<strong>采样分布</strong>里，而不是在被求期望的函数里。监督学习优化 \(\mathbb{E}_{(x,y)\sim\mathcal{D}}[\log \pi_\theta(y\mid x)]\)，数据分布是固定的；RL 里参数一变，数据分布跟着变。</p>
+    <p>\(\theta\) 出现在<strong>采样分布</strong>里，而不是在被求期望的函数里。监督学习优化 \(\mathbb{E}_{(x,y)\sim\mathcal{D}}[\log \pi_\theta(y\mid x)]\)，数据分布固定；RL 里参数一变，数据分布跟着变。</p>
     <p>这一条差异派生出后面全部的复杂性：为什么需要重要性采样、为什么需要信任域、为什么训练会崩。</p>
   </div>
 
-  <p>对含参数的采样分布求导，用 log-derivative trick。注意到 \(\nabla_\theta \pi_\theta = \pi_\theta \nabla_\theta \log \pi_\theta\)：</p>
+  <p>对含参数的采样分布求导，用 log-derivative trick，注意到 \(\nabla_\theta \pi_\theta = \pi_\theta \nabla_\theta \log \pi_\theta\)：</p>
 
   \[
   \nabla_\theta J
@@ -211,20 +441,18 @@ window.MathJax = {
   \log \pi_\theta(y \mid x) = \sum_{t=1}^{|y|} \log \pi_\theta(y_t \mid x, y_{&lt;t})
   \]
 
-  <h3 id="s1-2">1.2 REINFORCE 与它的方差问题</h3>
+  <p>这就是 <strong>REINFORCE</strong>。它正是 Part 1 那句话的数学形式：按整条回复的得分，加权推高或压低这条回复里每一个 token 的对数概率。</p>
 
-  <p>上式就是 REINFORCE。它的直觉非常朴素：<strong>按整条回复的得分，加权推高或压低这条回复里每一个 token 的对数概率。</strong></p>
-
-  <p>它是无偏的，但方差大到几乎不能直接用。原因在于梯度幅度由 \(R\) 的<strong>绝对值</strong>支配，而绝对值里含有大量与 \(\theta\) 无关的常数偏移。举个极端例子：如果把所有奖励都加上 1000，最优策略完全不变，但每一条样本——包括最差的那条——都会被强烈推高。梯度的信噪比被这个常数彻底淹没。</p>
+  <p>它无偏，但方差大到几乎不能直接用——原因就是 <a href="#s1-2">1.2</a> 讲的：梯度幅度被 \(R\) 的<strong>绝对值</strong>支配，而绝对值里含有大量与好坏无关的共同偏移。</p>
 
   <div class="box warn">
     <span class="lbl">这里已经埋下多轮的伏笔</span>
-    <p>那个求和 \(\sum_t\) 只对<strong>策略生成的 token</strong> 求。多轮 agent 里环境返回的 token 不是 \(\pi_\theta\) 产生的，它们根本不在这个式子里。这是 observation masking 的数学根源，<a href="#s3-2">3.2</a> 会严格推一遍。</p>
+    <p>那个求和 \(\sum_t\) 只对<strong>策略生成的 token</strong> 求。多轮 agent 里环境返回的 token 不是 \(\pi_\theta\) 产生的，它们根本不在这个式子里。这是 observation masking 的数学根源，<a href="#s5-3">5.3</a> 会严格推一遍。</p>
   </div>
 
-  <h3 id="s1-3">1.3 Baseline 定理</h3>
+  <h3 id="s3-3">3.3 Baseline 定理</h3>
 
-  <p>解决方案是减去一个只依赖于 \(x\)、不依赖于 \(y\) 的量 \(b(x)\)。关键在于这样做<strong>不引入偏差</strong>：</p>
+  <p>现在证明 Part 1 那个"减掉平均"的做法是合法的。关键在于：对任意<strong>不依赖 \(y\)</strong> 的 \(b(x)\)，</p>
 
   \[
   \begin{aligned}
@@ -239,55 +467,68 @@ window.MathJax = {
   \end{aligned}
   \]
 
-  <p>于是可以自由地把它减掉：</p>
+  <p>期望为零，意味着减掉它<strong>不改变梯度的期望，只降低方差</strong>：</p>
 
   \[
   \nabla_\theta J = \mathbb{E}\big[\, \underbrace{\big(R(x,y) - b(x)\big)}_{\text{advantage } A} \, \nabla_\theta \log \pi_\theta(y\mid x) \,\big]
   \]
 
-  <p>使方差最小的 \(b(x)\) 大致就是当前策略在该 prompt 上的期望回报：</p>
+  <p>使方差最小的 \(b(x)\) 大致是当前策略在该 prompt 上的期望回报：</p>
 
   \[ b^*(x) \approx V(x) = \mathbb{E}_{y \sim \pi_\theta}\big[ R(x,y) \big] \]
 
-  <div class="box key">
-    <span class="lbl">Advantage 的物理意义</span>
-    <p><strong>这条回复比"我自己在这道题上的平均水平"好多少。</strong> 比平均好就推高，比平均差就压低——与绝对分数是 0.9 还是 0.1 无关。后面所有算法的差异，本质上都只是<em>如何估计 \(b(x)\)</em> 的差异。</p>
-  </div>
+  <p>这正是 <a href="#s1-1">1.1</a> 里那个"8 次采样的平均分"。<strong>Part 1 的朴素做法，到这里被证明是有理论依据的。</strong></p>
 
-  <h3 id="s1-4">1.4 Advantage 与 Actor-Critic</h3>
+  <h3 id="s3-4">3.4 Actor-Critic 与 GAE</h3>
 
-  <p>问题于是变成：怎么得到 \(V(x)\)？两条路。</p>
+  <p>问题于是变成：怎么得到 \(V(x)\)？</p>
 
-  <p><strong>函数拟合。</strong> 训一个 critic 网络 \(V_\psi\) 去回归 \(V\)，用 TD 或 MC 目标更新。优点是可以给出 token 级的值估计，进而算出 token 级 advantage；缺点是在 LLM 上要多养一个同量级的模型、它的优化器状态，以及它自己的训练不稳定问题（critic 学不准会直接毒化 actor 的梯度）。</p>
+  <p><strong>函数拟合路线。</strong> 训一个 critic 网络 \(V_\psi\) 去回归 \(V\)。优点是可以给出 token 级的值估计，进而算出 token 级 advantage；缺点是在 LLM 上要多养一个同量级模型、它的优化器状态，以及它自己的训练不稳定问题（critic 学不准会直接毒化 actor 的梯度）。</p>
 
-  <p><strong>蒙特卡洛估计。</strong> 对同一个 \(x\) 多采几条，用样本均值当 \(V(x)\)。优点是无需额外模型、无需额外训练；缺点是每个 prompt 要付出 \(G\) 倍的采样成本，且只能给出序列级的 advantage。</p>
-
-  <p>PPO 走第一条，GRPO 走第二条。<strong>在推理与工具调用类任务上，第二条已经成为主流</strong>——因为这类任务的奖励本来就只在终点，critic 能提供的额外信息有限，而它的成本是实打实的。</p>
-
-  <h3 id="s1-5">1.5 GAE：为完整性</h3>
-
-  <p>PPO 用 Generalized Advantage Estimation 在偏差和方差之间插值。定义 TD 残差 \(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)，则</p>
+  <p>PPO 走这条路线，并用 Generalized Advantage Estimation 在偏差与方差之间插值。定义 TD 残差 \(\delta_t = r_t + \gamma V(s_{t+1}) - V(s_t)\)，则</p>
 
   \[ \hat{A}^{\mathrm{GAE}(\gamma,\lambda)}_t = \sum_{l=0}^{\infty} (\gamma\lambda)^l\, \delta_{t+l} \]
 
-  <p>\(\lambda = 0\) 时退化为单步 TD（低方差、高偏差，完全信任 critic）；\(\lambda = 1\) 时退化为蒙特卡洛回报减去 \(V\)（无偏、高方差）。</p>
+  <p>\(\lambda = 0\) 退化为单步 TD（低方差、高偏差，完全信任 critic）；\(\lambda = 1\) 退化为蒙特卡洛回报减去 \(V\)（无偏、高方差）。</p>
 
-  <p>GRPO 里没有 GAE，因为没有 critic 也没有中间奖励。但值得知道它解决什么问题：<strong>\(\lambda\) 这个旋钮，本质上和后面 <a href="#s3-4">3.4</a> 里轮次级 credit assignment 的折扣因子是同一类东西</strong>——都是在"相信长期信号"和"相信局部估计"之间做取舍。</p>
+  <p>GRPO 里没有 GAE，因为没有 critic 也没有中间奖励。但值得知道它解决什么问题：<strong>\(\lambda\) 这个旋钮，与 <a href="#s5-5">5.5</a> 里轮次级 credit assignment 的折扣因子是同一类东西</strong>——都是在"相信长期信号"与"相信局部估计"之间取舍。</p>
+
+  <h4>关于折扣因子</h4>
+  <p>常规 RL 里 \(\gamma < 1\) 有两个作用：保证无限期回报收敛，以及表达"未来的奖励不如现在值钱"。LLM 生成场景里两个理由都不成立——序列有限长，且我们不认为早写的 token 比晚写的更值钱。</p>
+  <p>所以 <strong>LLM RL 里 \(\gamma = 1\) 是默认</strong>。\(\gamma\) 重新变得有意义是在多轮 agent 里被用作 credit assignment 的<em>启发式工具</em>——那时它不再是"未来贬值"的建模，而是"我先验地认为后面的轮次更该负责"的一个假设。这个区别很重要。</p>
+
+  <h3 id="s3-5">3.5 两条估计路线的分岔</h3>
+
+  <p><strong>蒙特卡洛路线。</strong> 不学 critic，对同一个 \(x\) 多采几条，用样本均值当 \(V(x)\)。优点是无需额外模型；缺点是每个 prompt 要付出 \(G\) 倍的采样成本，且只能给出序列级的 advantage。</p>
+
+  <div class="tw"><table>
+    <thead><tr><th></th><th>PPO（函数拟合）</th><th>GRPO（蒙特卡洛）</th></tr></thead>
+    <tbody>
+      <tr><td>baseline 来源</td><td>学习得到的 \(V_\psi(x)\)</td><td>同一 prompt 的 \(G\) 条采样均值</td></tr>
+      <tr><td>额外模型</td><td>需要，与 policy 同量级</td><td>不需要</td></tr>
+      <tr><td>额外采样</td><td>不需要</td><td>需要，\(G\) 倍</td></tr>
+      <tr><td>advantage 粒度</td><td>可到 token 级</td><td>序列级</td></tr>
+      <tr><td>主要风险</td><td>critic 学不准会毒化 actor</td><td>组内无方差时零梯度（<a href="#s4-5">4.5</a>）</td></tr>
+    </tbody>
+  </table></div>
+
+  <p><strong>在推理与工具调用类任务上，第二条已经成为主流</strong>——这类任务的奖励本来就只在终点，critic 能提供的额外信息有限，而它的成本是实打实的。下一部分展开这条路线的完整算法。</p>
 </section>
 
-<!-- ==================== PART 2 ==================== -->
-<section class="part" id="p2">
+<!-- ==================== PART 4 ==================== -->
+<section class="part" id="p4">
   <div class="part-head">
-    <div class="part-num">Part 02</div>
-    <h2>从 PPO 到 GRPO</h2>
-    <p class="part-sub">每一个你会在配置文件里调的数字，在这里都有一个机制解释</p>
+    <div class="part-num">Part 04</div>
+    <h2>GRPO 及其修正</h2>
+    <p class="part-sub">配置文件里每一个你会调的数字，在这里都有一个机制解释</p>
+    <span class="thread">主线 <b>②</b> 变成梯度 &nbsp;+&nbsp; <b>③</b> 不让它崩</span>
   </div>
 
-  <p class="lede">Part 01 的公式要求 \(y\) 必须由<em>当前</em>策略采出。现实中做不到——rollout 太贵，一批数据必须用于多次更新。这一部分讲的全部是"做不到之后的补丁"，以及这些补丁自身带来的新问题。</p>
+  <p class="lede">Part 3 的公式要求 \(y\) 必须由<em>当前</em>策略采出。现实中做不到——rollout 太贵，一批数据必须用于多次更新。这一部分讲的全部是"做不到之后的补丁"，以及这些补丁自身带来的新问题。</p>
 
-  <h3 id="s2-1">2.1 重要性采样与 off-policy 修正</h3>
+  <h3 id="s4-1">4.1 重要性采样与 off-policy 修正</h3>
 
-  <p>一批 rollout 数据生成完毕后，只要做过一次梯度更新，\(\theta\) 就变了，这批数据立刻变成 off-policy。用重要性采样修正：</p>
+  <p>一批 rollout 数据只要做过一次梯度更新，\(\theta\) 就变了，这批数据立刻变成 off-policy。用重要性采样修正：</p>
 
   \[ \mathbb{E}_{y \sim \pi_\theta}\big[ f(y) \big] = \mathbb{E}_{y \sim \pi_{\theta_{\text{old}}}} \left[ \frac{\pi_\theta(y)}{\pi_{\theta_{\text{old}}}(y)} f(y) \right] \]
 
@@ -297,11 +538,11 @@ window.MathJax = {
 
   <div class="box warn">
     <span class="lbl">Rollout–Training Mismatch</span>
-    <p>在训推分离的框架里（见 <a href="#s5-1">5.1</a>），rollout 由推理引擎产生、训练由训练框架执行，两者的 kernel 实现、batching 策略、数值精度都不同。<strong>即使参数完全一致，两边算出的 log-probability 也会有微小差异。</strong></p>
-    <p>因此 \(\pi_{\theta_{\text{old}}}\) 通常由训练框架<em>重新 forward 一遍</em>得到，而不是直接采用推理引擎返回的 logprob。否则比值会系统性偏离 1，在长序列上累积成显著的不稳定源。这是实践中一个真实且容易被忽略的坑。</p>
+    <p>在训推分离的框架里（见 <a href="#s6-1">6.1</a>），rollout 由推理引擎产生、训练由训练框架执行，两者的 kernel 实现、batching 策略、数值精度都不同。<strong>即使参数完全一致，两边算出的 log-probability 也会有微小差异。</strong></p>
+    <p>因此 \(\pi_{\theta_{\text{old}}}\) 通常由训练框架<em>重新 forward 一遍</em>得到，而不是直接采用推理引擎返回的 logprob。否则比值会系统性偏离 1，在长序列上累积成显著的不稳定源。</p>
   </div>
 
-  <h3 id="s2-2">2.2 信任域与 clip</h3>
+  <h3 id="s4-2">4.2 信任域与 clip</h3>
 
   <p>重要性比值可以任意大。当 \(\pi_\theta\) 离 \(\pi_{\theta_{\text{old}}}\) 很远时，这个估计本身已经不可靠，而梯度还会被巨大的比值放大。需要一个机制限制"一步能走多远"。</p>
 
@@ -323,7 +564,7 @@ window.MathJax = {
 
   <p>它不再保证严格的信任域，但便宜、稳健、一阶可解——这个取舍是 PPO 统治工业界的原因。</p>
 
-  <h3 id="s2-3">2.3 为什么是 min 而不是直接 clip</h3>
+  <h3 id="s4-3">4.3 为什么是 min 而不是直接 clip</h3>
 
   <p>先看 clip 单独在做什么：</p>
 
@@ -335,19 +576,19 @@ window.MathJax = {
     </tbody>
   </table></div>
 
-  <p>那么 \(\min\) 的作用是什么？它取两项中较小者，构成一个<strong>悲观下界</strong>。其效果是让截断只在"更新朝着对目标有利的方向走过头"时生效，而在"更新走反了"时<em>不</em>生效。</p>
+  <p>\(\min\) 取两项中较小者，构成一个<strong>悲观下界</strong>。它让截断只在"更新朝着对目标有利的方向走过头"时生效，而在"更新走反了"时<em>不</em>生效。</p>
 
   <p>举一个具体情形：设 \(A > 0\)（该推高），但由于其他 token 的更新牵连，\(r\) 已经掉到 \(1-\epsilon\) 以下——该推高的东西概率反而暴跌，这显然是坏事，我们希望梯度把它拉回来。此时：</p>
   <ul>
-    <li>未截断项 \(r A\) 较小（因为 \(r\) 小、\(A\) 正）</li>
+    <li>未截断项 \(rA\) 较小（因为 \(r\) 小、\(A\) 正）</li>
     <li>截断项 \(\mathrm{clip}(r)A = (1-\epsilon)A\) 较大</li>
     <li>\(\min\) 选中未截断项 \(\Rightarrow\) <strong>梯度依然存在</strong>，把它拽回来</li>
   </ul>
-  <p>如果直接用 \(\mathrm{clip}\) 而不套 \(\min\)，这种情形下梯度会被错误地截断为零，模型失去修正的能力。<strong>\(\min\) 保证的是"限制过度更新，但不阻止纠错"。</strong></p>
+  <p>如果直接用 \(\mathrm{clip}\) 而不套 \(\min\)，这种情形下梯度会被错误地截断为零，模型失去纠错能力。<strong>\(\min\) 保证的是"限制过度更新，但不阻止纠错"。</strong></p>
 
-  <h3 id="s2-4">2.4 GRPO：用 group 取代 critic</h3>
+  <h3 id="s4-4">4.4 GRPO 的完整目标函数</h3>
 
-  <p>回到 1.4 的分岔口。GRPO 选择蒙特卡洛路线：对同一个 prompt \(x\) 采样 \(G\) 条回复 \(\{y_1, \dots, y_G\}\)，得到奖励 \(\{R_1,\dots,R_G\}\)，用组内统计量构造 advantage：</p>
+  <p>把 Part 1 的直觉、Part 3 的 baseline、以及上面的 clip 合在一起。对同一 prompt 采样 \(G\) 条，用组内统计量构造 advantage：</p>
 
   \[
   A_i = \frac{R_i - \mathrm{mean}(\mathbf{R})}{\mathrm{std}(\mathbf{R})}
@@ -355,9 +596,7 @@ window.MathJax = {
   \mathrm{mean}(\mathbf{R}) = \frac{1}{G}\sum_{j=1}^{G} R_j
   \]
 
-  <p>并把这个 \(A_i\) 赋给第 \(i\) 条回复的<strong>每一个 token</strong>。这就是 "Group <strong>Relative</strong>" 的含义：baseline 不是学出来的，是同一道题的同组样本互相比出来的。</p>
-
-  <p>完整目标函数：</p>
+  <p>并把 \(A_i\) 赋给第 \(i\) 条回复的<strong>每一个 token</strong>。这就是 "Group <strong>Relative</strong>" 的含义：baseline 不是学出来的，是同一道题的同组样本互相比出来的。完整目标：</p>
 
   \[
   \mathcal{J}(\theta) = \mathbb{E}\left[
@@ -367,9 +606,9 @@ window.MathJax = {
   \right]
   \]
 
-  <p>后面的所有改进——DAPO 的四条、Dr. GRPO 的两条——改的都是这个式子里的 \(\epsilon\)、两层求和的分母、\(\beta\)，以及那批 \(\{y_i\}\) 是怎么来的。</p>
+  <p>后面所有改进改的都是这个式子里的 \(\epsilon\)、两层求和的分母、\(\beta\)，以及那批 \(\{y_i\}\) 是怎么来的。</p>
 
-  <h3 id="s2-5">2.5 两个推论</h3>
+  <h3 id="s4-5">4.5 两个推论</h3>
 
   <h4>推论 A：奖励无方差的 group 贡献零梯度</h4>
 
@@ -381,41 +620,39 @@ window.MathJax = {
   A_i = 0
   \]
 
-  <p>该 prompt 对这一步更新的贡献<strong>精确为零</strong>。（实现上 \(\mathrm{std}=0\) 还会触发除零，所以都会加 \(\varepsilon\) 或直接过滤。）</p>
-
-  <p>这条推论的份量远超它的形式：</p>
+  <p>这正是 <a href="#s1-3">1.3</a> 提出的第一个麻烦。它的份量远超形式：</p>
   <ul>
     <li><strong>学习信号只来自"模型半会不会"的样本。</strong> 全对和全错的题都消耗了 \(G\) 次采样的算力，却换回零梯度。</li>
     <li>它直接推出数据工程的方向：难度分层、按组内奖励方差筛选训练样本。这不是经验玄学，是算术。</li>
-    <li>它直接推出 DAPO 的 dynamic sampling（<a href="#s2-6">2.6</a>）。</li>
-    <li><strong>它是"冷启动"的数学依据。</strong> 如果基座模型在目标任务上的 pass rate 接近 0，组内几乎全错，梯度恒为零，训练根本无法启动。此时 SFT 冷启动的作用<em>不是</em>让模型变强，而是把 pass rate 从 0 抬到一个有方差的区间，<strong>制造出非零的学习信号</strong>。这是两阶段流程的真正理由。</li>
+    <li>它直接推出 DAPO 的 dynamic sampling（<a href="#s4-6">4.6</a>）。</li>
+    <li><strong>它是"冷启动"的数学依据。</strong> 如果基座模型在目标任务上的 pass rate 接近 0，组内几乎全错，梯度恒为零，训练根本无法启动。此时 SFT 冷启动的作用<em>不是</em>让模型变强，而是把 pass rate 抬到一个有方差的区间，<strong>制造出非零的学习信号</strong>。这是两阶段流程的真正理由。</li>
   </ul>
 
   <h4>推论 B：除以标准差引入偏差</h4>
 
-  <p>Baseline 定理要求 \(b(x)\) 不依赖 \(y\)。组内均值近似满足（严格说组内样本互相耦合，会引入 \(O(1/G)\) 量级的偏差）。但<strong>除以 \(\mathrm{std}(\mathbf{R})\) 不满足</strong>——标准差是从 \(\{R_i\}\) 算出来的，直接依赖于采样结果。</p>
+  <p>Baseline 定理要求 \(b(x)\) 不依赖 \(y\)。组内均值近似满足（严格说组内样本互相耦合，会引入 \(O(1/G)\) 量级的偏差）。但<strong>除以 \(\mathrm{std}(\mathbf{R})\) 不满足</strong>——标准差是从 \(\{R_i\}\) 算出来的，直接依赖采样结果。</p>
 
   <p>实际效果是：<strong>奖励方差小的题被放大权重</strong>。设想 8 条里只对 1 条，\(\mathrm{std}\) 很小，那唯一一条正确样本的 advantage 会被除成一个异常大的数。Dr. GRPO 称之为 <strong>question-level difficulty bias</strong>。</p>
 
-  <h3 id="s2-6">2.6 DAPO 的四个修改</h3>
+  <h3 id="s4-6">4.6 DAPO 的四个修改</h3>
 
   <h4>① Clip-Higher</h4>
 
   <p>把 \(\epsilon\) 拆成上下两个：\(\mathrm{clip}(r,\, 1-\epsilon_{\text{low}},\, 1+\epsilon_{\text{high}})\)，并调大 \(\epsilon_{\text{high}}\)。</p>
 
-  <p>机制是四条里最不直觉的。考虑一个当前概率为 \(p\) 的 token，clip 上界 \(1+\epsilon\) 意味着它的新概率最多为 \((1+\epsilon)p\)，<strong>绝对提升空间 \(\epsilon p\) 与当前概率成正比</strong>。取 \(\epsilon = 0.2\)：</p>
+  <p>机制是四条里最不直觉的。考虑一个当前概率为 \(p\) 的 token，clip 上界意味着新概率最多为 \((1+\epsilon)p\)，<strong>绝对提升空间 \(\epsilon p\) 与当前概率成正比</strong>。取 \(\epsilon = 0.2\)：</p>
 
   <div class="tw"><table>
     <thead><tr><th>当前概率</th><th>截断后上限</th><th>绝对提升空间</th></tr></thead>
     <tbody>
       <tr><td class="num">0.01</td><td class="num">0.012</td><td class="num">+0.002</td></tr>
-      <tr><td class="num">0.9</td><td class="num">1.08 → 1.0</td><td class="num">+0.1（受限于归一化）</td></tr>
+      <tr><td class="num">0.9</td><td class="num">1.08 → 1.0</td><td class="num">+0.1（受归一化限制）</td></tr>
     </tbody>
   </table></div>
 
   <p>低概率 token 正是探索的来源，而 clip 对它们的压制远强于对高概率 token。后果是一条因果链：</p>
 
-  <pre><code>低概率 token 涨不上去
+<pre><code>低概率 token 涨不上去
   → 概率质量持续向已有的高概率 token 集中
   → 策略熵单调下降 → 熵坍缩
   → 采样多样性消失 → 组内 G 条几乎相同
@@ -425,9 +662,9 @@ window.MathJax = {
 
   <h4>② Dynamic Sampling</h4>
 
-  <p>随训练推进，越来越多 prompt 变成全对，被推论 A 判为零梯度。后果是<strong>有效 batch size 单调缩小</strong>：名义 batch 是 256，实际产生梯度的可能只剩几十。梯度方差随之上升，训练信号越来越噪，且这个退化过程是<em>隐性</em>的——不监控就看不见。</p>
+  <p>随训练推进，越来越多 prompt 变成全对，被推论 A 判为零梯度。后果是<strong>有效 batch size 单调缩小</strong>：名义 batch 是 256，实际产生梯度的可能只剩几十。梯度方差随之上升，而这个退化过程是<em>隐性</em>的——不监控就看不见。</p>
 
-  <p>处方：过滤掉 accuracy 为 0 和 1 的 group，持续补充采样，直到<strong>有效 prompt 数</strong>填满目标 batch。代价是采样开销上升，换来的是稳定的有效批量。同时应当把"有效 prompt 数"作为一条独立曲线上报监控。</p>
+  <p>处方：过滤掉 accuracy 为 0 和 1 的 group，持续补充采样，直到<strong>有效 prompt 数</strong>填满目标 batch。代价是采样开销上升。应当把"有效 prompt 数"作为一条独立曲线上报监控。</p>
 
   <h4>③ Token-Level Policy Gradient Loss</h4>
 
@@ -448,7 +685,7 @@ window.MathJax = {
 
   <p>两种处方：<em>overlong filtering</em>——对截断样本屏蔽其 loss 贡献；<em>soft punishment</em>——在接近长度上限的区间施加渐进惩罚，只有超过硬上限才重罚。前者更干净，后者给模型一个"该收尾了"的可学信号。</p>
 
-  <h3 id="s2-7">2.7 Dr. GRPO 的两个偏差</h3>
+  <h3 id="s4-7">4.7 Dr. GRPO 的两个偏差</h3>
 
   <div class="tw"><table>
     <thead><tr><th>偏差</th><th>来源</th><th>后果</th></tr></thead>
@@ -456,7 +693,7 @@ window.MathJax = {
       <tr>
         <td>response-level length bias</td>
         <td>分母 \(1/|y_i|\)</td>
-        <td>对 \(A &lt; 0\) 的样本，越长的错误回复每 token 惩罚越轻。模型可以通过<strong>把错误答案写长</strong>来减少受罚，直接表现为响应长度单调暴涨</td>
+        <td>对 \(A &lt; 0\) 的样本，越长的错误回复每 token 惩罚越轻。模型可以通过<strong>把错误答案写长</strong>来减少受罚——这就是 <a href="#s2-5">2.5</a> 里"长度的间接奖励"那条 hacking 的机制</td>
       </tr>
       <tr>
         <td>question-level difficulty bias</td>
@@ -466,16 +703,14 @@ window.MathJax = {
     </tbody>
   </table></div>
 
-  <p>处方是把分母换成常数（如 \(\mathrm{max\_length}\)），并去掉标准差归一化：</p>
-
-  \[ A_i = R_i - \mathrm{mean}(\mathbf{R}) \]
+  <p>处方是把分母换成常数（如 \(\mathrm{max\_length}\)），并去掉标准差归一化：\(A_i = R_i - \mathrm{mean}(\mathbf{R})\)。</p>
 
   <div class="box key">
     <span class="lbl">值得指出的关联</span>
-    <p><strong>DAPO 的 ③ 和 Dr. GRPO 的第一条，是同一个问题的两种写法。</strong> 前者用"全批次 token 数"做分母，后者用"常数"做分母，都是为了解除"按样本长度归一化"造成的 token 权重失衡。能指出这一点，比分别背下两篇论文更能说明理解到位。</p>
+    <p><strong>DAPO 的 ③ 和 Dr. GRPO 的第一条，是同一个问题的两种写法。</strong> 前者用"全批次 token 数"做分母，后者用"常数"做分母，都是为了解除按样本长度归一化造成的 token 权重失衡。</p>
   </div>
 
-  <h3 id="s2-8">2.8 KL 正则：留还是去</h3>
+  <h3 id="s4-8">4.8 KL 正则：留还是去</h3>
 
   <p>GRPO 原文采用 Schulman 的 k3 估计器，它无偏、恒非负、且方差低于朴素估计。记 \(\rho = \pi_{\text{ref}}/\pi_\theta\)：</p>
 
@@ -486,13 +721,13 @@ window.MathJax = {
     <tbody>
       <tr>
         <td>理由</td>
-        <td>奖励模型是学出来的，离开训练分布即不可靠。KL 把策略锚在参考模型附近，防止 exploit 奖励模型的漏洞，也防止通用能力退化</td>
-        <td>可验证奖励<strong>不可被 exploit</strong>（程序执行结果就是结果，没有可钻的模型漏洞）。且长链推理 RL 的目的本就是让行为分布<strong>大幅偏离</strong>初始模型，KL 是直接阻碍</td>
+        <td>奖励模型是学出来的，离开训练分布即不可靠。KL 把策略锚在参考模型附近，防止 exploit 奖励模型的漏洞</td>
+        <td>可验证奖励<strong>不可被 exploit</strong>（程序执行结果就是结果）。且长链推理 RL 的目的本就是让行为分布<strong>大幅偏离</strong>初始模型，KL 是直接阻碍</td>
       </tr>
       <tr>
         <td>代价</td>
         <td>限制策略能走多远，收敛更慢，能达到的上限更低</td>
-        <td>失去锚点，信任域只剩 clip 一层，更易崩溃；通用能力可能退化（alignment tax）</td>
+        <td>失去锚点，信任域只剩 clip 一层，更易崩溃；通用能力可能退化</td>
       </tr>
       <tr>
         <td>显存</td>
@@ -504,34 +739,48 @@ window.MathJax = {
 
   <div class="box warn">
     <span class="lbl">实现上容易漏的一点</span>
-    <p>KL 有两种加法：<strong>KL-in-loss</strong>（作为正则项加进目标函数，直接影响梯度）与 <strong>KL-in-reward</strong>（从奖励里扣除，经由 advantage 传播）。多数框架把它们做成两个独立开关。想真正关掉 KL，<strong>两个都要关</strong>——只关一个是很常见的疏漏。</p>
+    <p>KL 有两种加法：<strong>KL-in-loss</strong>（作为正则项加进目标函数）与 <strong>KL-in-reward</strong>（从奖励里扣除，经由 advantage 传播）。多数框架把它们做成两个独立开关。想真正关掉 KL，<strong>两个都要关</strong>——只关一个是很常见的疏漏。</p>
   </div>
 </section>
 
-<!-- ==================== PART 3 ==================== -->
-<section class="part" id="p3">
+<!-- ==================== PART 5 ==================== -->
+<section class="part" id="p5">
   <div class="part-head">
-    <div class="part-num">Part 03</div>
-    <h2>多轮 Agentic RL</h2>
-    <p class="part-sub">当轨迹里出现了不由策略产生的 token</p>
+    <div class="part-num">Part 05</div>
+    <h2>多轮：Agentic 的部分</h2>
+    <p class="part-sub">从"生成一段话"到"在环境中反复行动"，技术上到底多了什么</p>
+    <span class="thread">主线 <b>②</b> 分数怎么变成梯度（多轮版本）</span>
   </div>
 
-  <p class="lede">从单轮到多轮，变的不是算法，而是<strong>轨迹里混入了环境产生的 token</strong>。仅这一个变化，就派生出 masking、credit assignment、异常轨迹三个必须正面处理的问题。它们是 agentic RL 区别于普通 RLHF 的全部技术内容。</p>
+  <p class="lede">前面几部分讲的对单轮和多轮同样适用。这一部分才是 agentic RL 区别于普通 RLVR 的全部内容——而它们全部源自 <a href="#s0-1">0.1</a> 提过的那一件事：轨迹里混入了不由模型产生的 token。</p>
 
-  <h3 id="s3-1">3.1 轨迹结构</h3>
+  <h3 id="s5-1">5.1 多了什么</h3>
 
-  <pre><code>s₀  = system prompt + task 描述           ← 环境给定
-a₁  = 模型输出（推理 + 一次工具调用）        ← 策略产生 ★
-o₁  = 工具执行结果 / 报错                   ← 环境返回
-a₂  = 模型输出（读取 o₁ 后的修正）           ← 策略产生 ★
+  <p>单轮：模型输出一段话，打分，结束。多轮：模型输出 → 环境返回 → 模型再输出 → …… → 最终打分。多出来的东西只有两样，但每一样都很麻烦：</p>
+
+  <div class="tw"><table>
+    <thead><tr><th>多出来的</th><th>带来的问题</th><th>在哪解决</th></tr></thead>
+    <tbody>
+      <tr><td>轨迹中有环境产生的 token</td><td>loss 该算在哪些位置上</td><td><a href="#s5-3">5.3</a>、<a href="#s5-4">5.4</a></td></tr>
+      <tr><td>一次奖励要负责多个轮次</td><td>哪一轮该拿功劳、哪一轮该背锅</td><td><a href="#s5-5">5.5</a>、<a href="#s5-6">5.6</a></td></tr>
+      <tr><td>（副产品）轨迹可能半途坏掉</td><td>脏数据污染梯度</td><td><a href="#s5-7">5.7</a></td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="s5-2">5.2 轨迹结构</h3>
+
+<pre><code>s₀  = system prompt + 任务描述              ← 环境给定
+a₁  = 模型输出（推理 + 一次工具调用）         ← 策略产生 ★
+o₁  = 工具执行结果 / 报错                    ← 环境返回
+a₂  = 模型输出（读取 o₁ 后的修正）            ← 策略产生 ★
 o₂  = ...
  ⋮
-a_T = 最终答案 / 显式终止                   ← 策略产生 ★
-R   = 对最终结果的验证                      ← 仅在终点给出一次</code></pre>
+a_T = 最终答案 / 显式终止                    ← 策略产生 ★
+R   = 对最终结果的验证                       ← 仅在终点给出一次</code></pre>
 
-  <p>记第 \(k\) 轮结束时的完整历史为 \(h_k = (s_0, a_1, o_1, \dots, a_k, o_k)\)。两个结构性特征决定了后面的一切：<strong>轨迹中混入了环境 token</strong>，以及<strong>奖励极度稀疏</strong>（整条轨迹只有一个标量）。</p>
+  <p>记第 \(k\) 轮结束时的完整历史为 \(h_k = (s_0, a_1, o_1, \dots, a_k, o_k)\)。带 ★ 的才是策略的动作，其余都是环境。</p>
 
-  <h3 id="s3-2">3.2 Observation Masking 的严格推导</h3>
+  <h3 id="s5-3">5.3 Observation Masking 的严格推导</h3>
 
   <p>把整条轨迹的概率展开：</p>
 
@@ -559,17 +808,17 @@ R   = 对最终结果的验证                      ← 仅在终点给出一次
     <p>策略梯度中<strong>只包含 action token 的对数概率</strong>。环境项因不含 \(\theta\)，求导后整项消失——这不是"影响小可以忽略"，而是<strong>数学上根本不在式子里</strong>。</p>
   </div>
 
-  <p>两个后果，一个数学的一个工程的：</p>
+  <p>两个后果：</p>
   <ul>
-    <li><strong>数学上</strong>：把 \(o\) 的 token 计入 loss，等于在优化一个并非目标函数梯度的量。得到的更新方向没有理论依据。</li>
+    <li><strong>数学上</strong>：把 \(o\) 的 token 计入 loss，等于在优化一个并非目标函数梯度的量，得到的更新方向没有理论依据。</li>
     <li><strong>工程上</strong>：那等价于在做"用交叉熵拟合环境输出"的监督学习，且样本权重是 advantage。当 advantage 为正时，模型被<strong>训练去背诵工具的返回内容</strong>。训练曲线看起来"在动"，学到的却是完全错误的东西。</li>
   </ul>
 
-  <h3 id="s3-3">3.3 Mask 的构造与验证</h3>
+  <h3 id="s5-4">5.4 Mask 的构造与验证</h3>
 
   <p><code>loss_mask</code> 是一个与 <code>input_ids</code> 等长的 0/1 向量：策略生成的 token 记 1，其余全部记 0——包括 system prompt、任务描述、工具返回，以及 chat template 中的固定结构部分。</p>
 
-  <p>同理，重要性比值 \(r_t\) <strong>也只在 mask 为 1 的位置计算</strong>，2.6 ③ 中的分母 \(\sum_i |y_i|\) 也只统计 action token。这一处是实现中最容易遗漏的。</p>
+  <p>同理，重要性比值 \(r_t\) <strong>也只在 mask 为 1 的位置计算</strong>，<a href="#s4-6">4.6</a> ③ 中的分母 \(\sum_i |y_i|\) 也只统计 action token。这一处是实现中最容易遗漏的。</p>
 
   <div class="box warn">
     <span class="lbl">必做的验证流程</span>
@@ -583,26 +832,21 @@ R   = 对最终结果的验证                      ← 仅在终点给出一次
     </ol>
   </div>
 
-  <h3 id="s3-4">3.4 Credit Assignment</h3>
+  <h3 id="s5-5">5.5 Credit Assignment</h3>
 
-  <p>奖励只在终点给出一次。多轮之中，哪一轮该拿功劳、哪一轮该背锅？这是多轮 RL 的核心开放问题。</p>
+  <p>这是 <a href="#s1-3">1.3</a> 提出的第二个麻烦在多轮场景的完整形态。奖励只在终点给出一次，多轮之中谁该负责？这是多轮 RL 的核心开放问题。</p>
 
   <h4>轨迹级</h4>
-
   \[ A_{i,k} = A_i \qquad \forall k \in \{1,\dots,T\} \]
-
   <p>所有 action token 共享同一个 advantage。这是多数框架的默认做法。</p>
   <ul>
-    <li><strong>无偏</strong>：它就是 Part 01 的 REINFORCE 加 group baseline，一字未改。</li>
+    <li><strong>无偏</strong>：它就是 Part 3 的 REINFORCE 加 group baseline，一字未改。</li>
     <li><strong>credit 分辨率为零</strong>：一条最终成功的轨迹中，第 1 轮那个毫无价值的试探也被推高；一条最终失败的轨迹中，第 2 轮那个正确的诊断也被压低。方差高，样本效率低。</li>
   </ul>
 
   <h4>轮次级</h4>
-
   <p>最简单的形式是把终点奖励按轮次折扣回传：</p>
-
   \[ A_{i,k} = \gamma^{\,T-k} A_i, \qquad \gamma \in (0, 1] \]
-
   <ul>
     <li><strong>引入偏差</strong>：\(\gamma\) 是纯粹的启发式，没有任何真实的分轮奖励支持它。</li>
     <li><strong>降低方差</strong>：早期轮次权重更低，减少了"与结果无关的早期动作被强推"的噪声。</li>
@@ -614,202 +858,108 @@ R   = 对最终结果的验证                      ← 仅在终点给出一次
     <p>轨迹级把 credit <strong>平摊</strong>（无偏、高方差）；轮次级按你的<strong>先验重新分配</strong>（有偏、低方差）。哪个更好取决于该任务中 credit 的真实分布，<strong>这是经验问题而非理论问题</strong>——因此它值得做消融，而不是查文献抄一个结论。</p>
   </div>
 
-  <h3 id="s3-5">3.5 稀疏奖励的稠密化</h3>
+  <h3 id="s5-6">5.6 稀疏奖励的稠密化</h3>
 
   <p>折扣回传只是在"猜"credit 的分布。更有原则的思路是：<strong>为中间轮次寻找真正可验证的信号</strong>，让每一轮都能构造自己的 baseline，而不是从终点硬摊。</p>
 
-  <p>可用的中间信号通常具备"廉价且客观"的特点，例如：工具调用的格式是否合法、调用是否成功执行、返回是否非空、是否重复了上一轮已经做过的调用、是否朝着终止条件推进。这些不需要知道最终答案就能判定。</p>
+  <p>可用的中间信号通常"廉价且客观"：工具调用格式是否合法、调用是否成功执行、返回是否非空、是否重复了上一轮已做过的调用、是否朝终止条件推进。这些不需要知道最终答案就能判定。</p>
 
-  <p>这类做法（MT-GRPO 一类工作的方向）把一个纯终点奖励的问题，部分地转化为分轮奖励的问题，从而恢复了 credit 分辨率。<strong>风险在于：每引入一个中间信号，就引入一个可被 hack 的目标</strong>——见 <a href="#s4-4">4.4</a>。</p>
+  <p>这类做法把纯终点奖励的问题部分转化为分轮奖励的问题，从而恢复了 credit 分辨率。<strong>但风险是：每引入一个中间信号，就引入一个可被 hack 的目标</strong>——回到 <a href="#s2-4">2.4</a> 的 Goodhart 定律。</p>
 
-  <h3 id="s3-6">3.6 异常轨迹</h3>
+  <h3 id="s5-7">5.7 异常轨迹</h3>
 
-  <p>多轮 rollout 会稳定地产生一批"不完整"的轨迹，主要有三类：<strong>解析失败</strong>（模型输出中提取不到合法的工具调用）、<strong>超出轮次上限</strong>（用尽预算仍未终止）、<strong>长度截断</strong>（达到 <code>max_length</code> 被切断）。</p>
+  <p>多轮 rollout 会稳定地产生一批"不完整"的轨迹：<strong>解析失败</strong>（输出中提取不到合法的工具调用）、<strong>超出轮次上限</strong>（用尽预算仍未终止）、<strong>长度截断</strong>（达到 <code>max_length</code> 被切断）。</p>
 
-  <p>它们必须被显式处理。放任不管等于让脏轨迹参与梯度计算，这是真实训练事故的常见来源。三种处理方式各有代价：</p>
+  <p>放任不管等于让脏轨迹参与梯度计算，这是真实训练事故的常见来源。三种处理各有代价：</p>
 
   <div class="tw"><table>
     <thead><tr><th>处理方式</th><th>后果</th></tr></thead>
     <tbody>
       <tr><td>直接丢弃</td><td>最干净，但改变了批次的有效分布，构成<strong>幸存者偏差</strong>；丢弃比例过高时批量塌陷</td></tr>
-      <tr><td>保留但屏蔽 loss</td><td>保持批次结构、不产生错误梯度；但该样本仍进入 group 的奖励统计，需要明确判断这是否是想要的</td></tr>
-      <tr><td>赋予固定负奖励</td><td>明确传达"不要这样做"；但负奖励的设计不当会直接制造 reward hacking（<a href="#s4-4">4.4</a>）</td></tr>
+      <tr><td>保留但屏蔽 loss</td><td>保持批次结构、不产生错误梯度；但该样本仍进入 group 的奖励统计，需明确判断这是否是想要的</td></tr>
+      <tr><td>赋予固定负奖励</td><td>明确传达"不要这样做"；但负奖励设计不当会直接制造 reward hacking（<a href="#s2-4">2.4</a>）</td></tr>
     </tbody>
   </table></div>
 
   <div class="box warn">
     <span class="lbl">监控比处理更重要</span>
-    <p>无论选择哪种处理，都必须为每一类异常单独打计数器并持续上报。训练崩溃时，这几条曲线是<strong>第一手证据</strong>：截断率从 2% 突然跃升到 40%，直接指向响应长度暴涨，进而指向 2.6 ③④ 或 2.7 的第一条偏差。</p>
+    <p>无论选择哪种处理，都必须为每一类异常单独打计数器并持续上报。训练崩溃时，这几条曲线是<strong>第一手证据</strong>：截断率从 2% 突然跃升到 40%，直接指向响应长度暴涨，进而指向 <a href="#s4-6">4.6</a> ③④ 或 <a href="#s4-7">4.7</a> 的 length bias。</p>
     <p>没有这些计数器，面对一条掉下去的奖励曲线，就只能靠猜。</p>
   </div>
 
-  <h3 id="s3-7">3.7 多轮特有的评测指标</h3>
+  <h3 id="s5-8">5.8 多轮特有的评测指标</h3>
 
   <p>单一的任务成功率不足以描述多轮 agent。它把"一次就对"和"错了能改对"混成同一个数，而后者才是多轮训练的独特价值。</p>
 
   <div class="tw"><table>
     <thead><tr><th>指标</th><th>定义</th><th>用途</th></tr></thead>
     <tbody>
-      <tr><td><strong>错误恢复率</strong></td><td>在首轮失败的样本中，最终成功的比例</td><td>直接测量"利用环境反馈的能力"。这是多轮框架是否真正起作用的<strong>核心证据</strong></td></tr>
+      <tr><td><strong>错误恢复率</strong></td><td>在首轮失败的样本中，最终成功的比例</td><td>直接测量"利用环境反馈的能力"。多轮框架是否真正起作用的<strong>核心证据</strong></td></tr>
       <tr><td>首轮成功率</td><td>第一次尝试即成功的比例</td><td>把单轮能力的提升分离出去</td></tr>
-      <tr><td>平均轮数</td><td>终止前的平均交互次数</td><td>下降可能是更高效，也可能是"不敢交互"，须与工具调用率联合判读</td></tr>
+      <tr><td>平均轮数</td><td>终止前的平均交互次数</td><td>下降可能是更高效，也可能是"不敢交互"，须与调用率联合判读</td></tr>
       <tr><td>工具调用成功率</td><td>合法且成功执行的调用占比</td><td>反映格式遵循与环境理解</td></tr>
     </tbody>
   </table></div>
 
   <div class="box key">
     <span class="lbl">一个关键的诊断</span>
-    <p>如果训练后总成功率上升，但<strong>错误恢复率没有变化</strong>，说明提升全部来自首轮能力——你训练出来的其实是一个更强的单轮模型，多轮框架并没有产生额外价值。这个风险只有这组指标能暴露出来。</p>
+    <p>如果训练后总成功率上升，但<strong>错误恢复率没有变化</strong>，说明提升全部来自首轮能力——你训练出来的其实是一个更强的单轮模型，多轮框架并没有产生额外价值。这个风险只有这组指标能暴露。</p>
   </div>
 </section>
 
-<!-- ==================== PART 4 ==================== -->
-<section class="part" id="p4">
+<!-- ==================== PART 6 ==================== -->
+<section class="part" id="p6">
   <div class="part-head">
-    <div class="part-num">Part 04</div>
-    <h2>RLVR 与 Reward 设计</h2>
-    <p class="part-sub">你写下的奖励决定模型学成什么样，而它与你真正想要的目标之间总有缝隙</p>
+    <div class="part-num">Part 06</div>
+    <h2>工程：让它跑起来</h2>
+    <p class="part-sub">算法全对，仍然可能死在吞吐和显存上</p>
+    <span class="thread">主线 <b>③</b> 怎么让它不崩</span>
   </div>
 
-  <h3 id="s4-1">4.1 RLVR</h3>
+  <h3 id="s6-1">6.1 训推分离的必然性</h3>
 
-  <p>Reinforcement Learning with <strong>Verifiable</strong> Rewards：奖励来自一个确定性的、可程序化执行的验证过程——数学答案是否等价、代码是否通过测试、工具调用序列是否达成目标状态。</p>
-
-  <p>它成为后训练主流范式的原因：</p>
-  <ul>
-    <li><strong>不需要奖励模型</strong>。省下一个同量级模型的训练与推理，也省下偏好标注的成本。</li>
-    <li><strong>信号可无限扩展</strong>。有多少可验证的题就有多少信号，不受标注预算约束。</li>
-    <li><strong>漏洞是可见的</strong>。奖励仍可能被 hack，但漏洞在<em>你写下的验证逻辑</em>里，是可读、可查、可修的；而奖励模型的漏洞藏在一个黑箱网络的参数中。</li>
-    <li><strong>与 group-based 方法天然契合</strong>。0/1 奖励加组内归一化，是一个信噪比很高的信号。</li>
-  </ul>
-
-  <h3 id="s4-2">4.2 与偏好类方法的分界</h3>
-
-  <div class="tw"><table>
-    <thead><tr><th></th><th>RLVR</th><th>RLHF / DPO</th></tr></thead>
-    <tbody>
-      <tr><td>奖励来源</td><td>程序验证</td><td>人类偏好（经奖励模型，或 DPO 隐式建模）</td></tr>
-      <tr><td>是否需要 RM</td><td>否</td><td>是（DPO 将其隐式化）</td></tr>
-      <tr><td>适用任务</td><td>存在客观对错：数学、代码、工具调用、结构化查询</td><td>不存在客观对错：有用性、安全性、风格、语气</td></tr>
-      <tr><td>主要风险</td><td>验证逻辑<em>定义</em>上的漏洞</td><td>RM 过拟合、分布外失效、奖励过优化</td></tr>
-      <tr><td>KL 约束</td><td>常可去掉</td><td>通常必须保留</td></tr>
-    </tbody>
-  </table></div>
-
-  <p>两者不是竞争关系而是互补关系：工业界的完整流程通常是 SFT → RLVR（提升硬能力）→ 偏好对齐（修风格与安全）。<strong>清楚地知道自己的方法覆盖哪一段、不覆盖哪一段，本身就是一种理解深度的体现。</strong></p>
-
-  <h3 id="s4-3">4.3 验证器设计的三个维度</h3>
-
-  <p>"可验证"听起来是二值的，实际上验证器的设计有大量自由度，且每个选择都会改变模型学到的东西。</p>
-
-  <h4>等价性：什么算"对"</h4>
-  <p>同一个正确答案往往有多种表达。数学里 \(\frac{1}{2}\) 与 \(0.5\)，代码里不同但等效的实现，结构化查询里不同的连接顺序。验证器必须显式定义等价类。</p>
-  <p>两类误差方向相反：<strong>基于文本/结构匹配</strong>的验证器会把等价的不同写法判错，<strong>系统性低估</strong>；<strong>基于执行结果</strong>的验证器会因数据巧合把错误答案判对，<strong>系统性高估</strong>。前者惩罚了正确的多样性，后者奖励了错误的运气——两者都会被模型察觉并利用。</p>
-
-  <h4>严格性：宽严的代价</h4>
-  <p>验证器过宽，模型学会钻空子；过严，大量正确答案被判错，等价于给训练注入标签噪声，且会压低组内奖励方差（推论 A）。<strong>严格性必须在训练开始前确定并冻结</strong>——中途修改会让前后的数字不可比，这是很多实验白跑的原因。</p>
-
-  <h4>速度：训练验证器 vs 评测验证器</h4>
-  <div class="box warn">
-    <span class="lbl">一个常见且代价高昂的混淆</span>
-    <p>严谨的评测套件往往很慢（多组测试用例、多个扰动环境、超时保护）。但训练时验证器要被调用的次数是 <code>batch × G × 轮数</code>，量级在每步数千次。<strong>把评测套件直接放进 rollout 循环会让训练吞吐塌掉。</strong></p>
-    <p>正确做法是两套实现：训练用快速验证器，最终数字用官方评测套件。<strong>但必须在一个子集上校验两者结论一致</strong>——如果训练验证器比评测宽松，模型就是在朝着一个注定会被评测判错的方向优化，而你在训练曲线上完全看不出来。</p>
-  </div>
-
-  <h3 id="s4-4">4.4 Goodhart 定律与 Reward Shaping</h3>
-
-  <blockquote style="margin:1.6rem 0; padding-left:1.15rem; border-left:2px solid var(--rule); color:var(--ink-2); font-style:italic;">
-    当一个指标变成目标，它就不再是一个好指标。
-  </blockquote>
-
-  <p>在 RL 里这条定律有一个精确的表述：<strong>模型优化的是你写下的奖励函数，不是你心里想的目标。</strong> 两者之间的任何缝隙，都会在足够多的采样中被找到并利用。优化压力越大，缝隙暴露得越彻底。</p>
-
-  <p>Reward shaping——为了加速收敛而添加中间奖励项——是缝隙的主要来源。一个通用的教科书式案例：</p>
-
-  <pre><code>目标：希望 agent 高效地完成任务
-做法：对每一次工具调用施加固定负奖励，鼓励"少走弯路"
-
-实际学到的：调用工具是有成本的
-           → 减少调用 → 不调用 → 直接凭猜测给出答案
-
-观察到的现象：平均轮数 ↓、工具调用率 ↓、错误恢复率 ↓
-             而总成功率可能几乎不变 —— 主曲线上完全看不出问题</code></pre>
-
-  <p>问题的根源是<strong>惩罚了行为而非结果</strong>。你想要的是"高效地做对"，写下的却是"少调用工具"，模型忠实地执行了后者。</p>
-
-  <div class="box key">
-    <span class="lbl">加 shaping 项之前的唯一检查</span>
-    <p>每引入一个奖励项，先问一句：<strong>模型能不能在不解决任务的前提下拿到它？</strong> 如果能，它一定会。</p>
-  </div>
-
-  <h3 id="s4-5">4.5 Reward Hacking 的常见形态</h3>
-
-  <ul>
-    <li><strong>利用验证器的等价类漏洞</strong>。找到一类"技术上通过验证但并未解决问题"的输出。例如针对测试用例特判、构造恰好绕过检查的退化答案。</li>
-    <li><strong>利用答案分布的先验</strong>。当答案空间小或分布高度不均时（是否类问题、常见数值），猜测的期望收益可能高于认真推理。</li>
-    <li><strong>利用抽取逻辑</strong>。如果答案是用正则从输出中提取的（"取最后一个代码块"），模型会学会输出多个候选来碰运气。<strong>抽取逻辑本身就是奖励函数的一部分</strong>，却常常被当成无关紧要的字符串处理。</li>
-    <li><strong>利用长度与格式的间接奖励</strong>。见 2.7 的 length bias：当归一化方式让长错误回复受罚更轻时，模型会发现"写长一点"是有利的，尽管没有任何一项奖励显式鼓励长度。</li>
-    <li><strong>用环境反馈碰运气而非理解</strong>。多轮场景特有：模型不断试探直到某次输出"看起来可行"，而非真正理解任务。这在终点奖励上与真正的理解<em>不可区分</em>，但会在平均轮数上升与首轮成功率停滞上暴露。</li>
-  </ul>
-
-  <p>防御的核心不是穷举漏洞——那做不到——而是<strong>建立能暴露 hacking 的观测体系</strong>：不要只看主奖励曲线，同时监控行为层面的分布指标（长度、轮数、调用率、格式合法率），并定期人工抽样阅读完整轨迹。<strong>Reward hacking 几乎总是先表现为行为分布的异常漂移，而主指标滞后甚至完全不动。</strong></p>
-</section>
-
-<!-- ==================== PART 5 ==================== -->
-<section class="part" id="p5">
-  <div class="part-head">
-    <div class="part-num">Part 05</div>
-    <h2>训练基础设施</h2>
-    <p class="part-sub">为什么 RL 框架是这个架构，以及显存到底花在哪</p>
-  </div>
-
-  <h3 id="s5-1">5.1 训推分离的必然性</h3>
-
-  <p>一步 RL 内部藏着两个计算特性截然不同的阶段：</p>
+  <p><a href="#s0-2">0.2</a> 那五步里，① rollout 和 ④ 更新的计算特性截然不同：</p>
 
   <div class="tw"><table>
     <thead><tr><th></th><th>Rollout（生成）</th><th>Train（更新）</th></tr></thead>
     <tbody>
-      <tr><td>计算模式</td><td>自回归逐 token，批内长度参差、动态变化</td><td>一次前向 + 反向，序列长度已知且固定</td></tr>
+      <tr><td>计算模式</td><td>自回归逐 token，批内长度参差</td><td>一次 forward + backward，长度已知</td></tr>
       <tr><td>瓶颈</td><td>显存带宽、KV cache 管理</td><td>算力、优化器状态显存</td></tr>
-      <tr><td>关键技术</td><td>continuous batching、paged attention</td><td>数据/张量并行、分片、混合精度</td></tr>
+      <tr><td>关键技术</td><td>continuous batching、paged attention</td><td>分片、张量并行、混合精度</td></tr>
       <tr><td>典型实现</td><td>vLLM / SGLang</td><td>FSDP / Megatron / DeepSpeed</td></tr>
     </tbody>
   </table></div>
 
-  <p>用训练框架直接做生成会慢一个数量级——没有 KV cache 的高效管理，没有 continuous batching，短序列要陪着最长的那条一起等。因此<strong>训推分离不是优化，是必需</strong>，这是所有现代 RL 框架的架构第一原理。</p>
+  <p>用训练框架做生成会慢一个数量级——没有 KV cache 的高效管理，没有 continuous batching，短序列要陪着最长的那条一起等。因此<strong>训推分离不是优化，是必需</strong>。</p>
 
-  <p>在多轮 agent 场景中这一点被进一步放大：一条轨迹包含多次生成，每次生成之间还要等待环境执行。<strong>Rollout 阶段占据了绝大部分墙钟时间，它的效率直接决定实验迭代速度。</strong></p>
+  <p>在多轮 agent 场景这一点被进一步放大：一条轨迹包含多次生成，每次生成之间还要等待环境执行。<strong>Rollout 占据了绝大部分墙钟时间，它的效率直接决定实验迭代速度。</strong></p>
 
-  <h3 id="s5-2">5.2 权重同步</h3>
+  <h3 id="s6-2">6.2 权重同步</h3>
 
-  <p>每步更新后，actor 的权重变了，必须推送给推理引擎。否则下一批数据是用过时的策略采集的，off-policy 程度失控，2.1 的重要性比值会大幅偏离 1，clip 频繁触发，训练迅速劣化。</p>
+  <p>这是 <a href="#s0-2">0.2</a> 的第 ⑤ 步。每步更新后权重变了，必须推送给推理引擎；否则下一批数据是用过时的策略采集的，off-policy 程度失控，<a href="#s4-1">4.1</a> 的重要性比值会大幅偏离 1，clip 频繁触发，训练迅速劣化。</p>
 
   <div class="tw"><table>
     <thead><tr><th>部署形态</th><th>做法</th><th>取舍</th></tr></thead>
     <tbody>
-      <tr><td>Co-located 共卡</td><td>训练与推理分时共享同一批 GPU，同步即显存内的重新分片</td><td>省卡，但两者的显存占用必须同时容纳，且无法并行执行</td></tr>
+      <tr><td>Co-located 共卡</td><td>训练与推理分时共享同一批 GPU，同步即显存内的重新分片</td><td>省卡，但两者显存必须同时容纳，且无法并行</td></tr>
       <tr><td>Disaggregated 分离</td><td>各自占用独立 GPU，通过集合通信广播权重</td><td>可流水线化，吞吐更高，但需要更多硬件</td></tr>
     </tbody>
   </table></div>
 
   <p>技术难点在于<strong>两侧的权重分片形态不一致</strong>：训练侧按 FSDP 分片（每张卡只持有一部分参数），推理侧需要完整权重或按张量并行方式切分。因此同步过程是 all-gather → 重新分片 → 载入推理引擎。这一环节既是常见的 bug 温床，也常常是隐蔽的性能瓶颈。</p>
 
-  <h3 id="s5-3">5.3 On-policy 程度</h3>
+  <h3 id="s6-3">6.3 On-policy 程度</h3>
 
-  <p>理想情形是严格 on-policy：采一批、更新一次、重新采。实践中为了摊薄昂贵的 rollout 成本，会把一批数据切成多个 mini-batch 做多次更新。</p>
-
-  <p>更新次数越多，数据相对当前策略就越 off-policy，clip 触发越频繁，训练越不稳定。这是一个纯粹的<strong>吞吐与稳定性之间的取舍</strong>。</p>
+  <p>理想情形是严格 on-policy：采一批、更新一次、重新采。实践中为了摊薄昂贵的 rollout 成本，会把一批数据切成多个 mini-batch 做多次更新。更新次数越多越 off-policy，clip 触发越频繁，训练越不稳定。这是纯粹的<strong>吞吐与稳定性取舍</strong>。</p>
 
   <div class="box key">
     <span class="lbl">起步建议</span>
-    <p>令 <code>ppo_epochs = 1</code> 且 <code>mini_batch_size = train_batch_size</code>，即每批数据只更新一次。这是最接近 on-policy 的配置，最稳定，也最慢。</p>
-    <p><strong>先用它把流程跑通</strong>——出问题时可以少排除一个变量。吞吐优化留到曲线确认上升之后再做。</p>
+    <p>令 <code>ppo_epochs = 1</code> 且 <code>mini_batch_size = train_batch_size</code>，即每批数据只更新一次。最接近 on-policy，最稳定，也最慢。<strong>先用它把流程跑通</strong>——出问题时可以少排除一个变量。吞吐优化留到曲线确认上升之后。</p>
   </div>
 
-  <h3 id="s5-4">5.4 显存构成</h3>
+  <h3 id="s6-4">6.4 显存构成</h3>
 
-  <p>设模型参数量为 \(P\)。全参数训练、bf16 混合精度、AdamW 优化器的<strong>静态</strong>显存占用为：</p>
+  <p>设模型参数量为 \(P\)。全参数训练、bf16 混合精度、AdamW 优化器的<strong>静态</strong>显存占用：</p>
 
   <div class="tw"><table>
     <thead><tr><th>组成</th><th>精度</th><th>字节 / 参数</th></tr></thead>
@@ -825,70 +975,63 @@ R   = 对最终结果的验证                      ← 仅在终点给出一次
 
   \[ M_{\text{static}} \approx 16 P \;\text{bytes} \]
 
-  <p>这个 <strong>16 bytes/param</strong> 是值得记住的经验常数。代入 \(P = 1.5\times 10^9\)：静态占用即 <strong>24 GB</strong>。再加上激活值、推理引擎的权重副本（共卡时）与 KV cache——<strong>一张 24 GB 的消费级显卡无法容纳 1.5B 的全参数 RL 训练</strong>。</p>
+  <p><strong>16 bytes/param</strong> 是值得记住的经验常数。代入 \(P = 1.5\times 10^9\)：静态占用即 <strong>24 GB</strong>。再加上激活值、推理引擎的权重副本（共卡时）与 KV cache——<strong>一张 24 GB 的消费级显卡无法容纳 1.5B 的全参数 RL 训练</strong>。</p>
 
-  <p>三条出路：</p>
-  <ul>
-    <li><strong>优化器状态 CPU 卸载</strong>：把 \(m, v\) 与 master weights 放到主机内存，省下 \(12P\) 字节（上表后三项），代价是每步的 PCIe 往返。</li>
-    <li><strong>LoRA</strong>：只有 adapter 参数需要梯度与优化器状态。设 adapter 参数量为 \(P_a \ll P\)，则 \(M \approx 2P + 14 P_a\)，基座权重只占 bf16 的一份。</li>
-    <li><strong>换更大显存的卡</strong>。</li>
-  </ul>
+  <p>三条出路：<strong>优化器状态 CPU 卸载</strong>（省下上表后三项共 \(12P\) 字节，代价是每步 PCIe 往返）；<strong>LoRA</strong>（只有 adapter 参数需要梯度与优化器状态，设其参数量 \(P_a \ll P\)，则 \(M \approx 2P + 14 P_a\)）；<strong>换更大显存的卡</strong>。</p>
 
   <div class="box key">
     <span class="lbl">为什么 CPU 卸载在 RL 里代价相对小</span>
-    <p>一步 RL 的墙钟时间被 rollout（多轮生成 + 环境执行）主导，optimizer step 的 PCIe 传输被摊薄在一个本就很长的周期里。同样的卸载放在纯 SFT 中代价就显著得多——SFT 一步里没有那个又慢又长的生成阶段。</p>
-    <p><strong>同一项技术在不同训练范式下的代价不同，这个判断本身比记住"卸载能省多少显存"更有价值。</strong></p>
+    <p>一步 RL 的墙钟时间被 rollout 主导（<a href="#s6-1">6.1</a>），optimizer step 的 PCIe 传输被摊薄在一个本就很长的周期里。同样的卸载放在纯 SFT 中代价就显著得多——SFT 一步里没有那个又慢又长的生成阶段。</p>
   </div>
 
-  <h3 id="s5-5">5.5 LoRA in RL</h3>
+  <h3 id="s6-5">6.5 LoRA in RL</h3>
 
   <p>一个初看反直觉的经验结果：在 RL 阶段，LoRA 的效果可以逼近全参数微调，而这在 SFT 阶段通常不成立。</p>
 
-  <p>核心论证是<strong>信息量的量级差异</strong>：RL 每条轨迹只贡献一个标量奖励，信息量在 1 bit 量级；而 SFT 中每一个 token 都是一个完整的监督信号。RL 注入的总信息量远小于 SFT，因此它<strong>本就不需要那么大的参数更新容量</strong>，低秩约束不构成瓶颈。</p>
+  <p>核心论证是<strong>信息量的量级差异</strong>——回到 <a href="#s0-1">0.1</a> 那张表：RL 每条轨迹只贡献一个标量奖励，信息量在 1 bit 量级；SFT 中每个 token 都是完整的监督信号。RL 注入的总信息量远小于 SFT，因此它<strong>本就不需要那么大的参数更新容量</strong>，低秩约束不构成瓶颈。</p>
 
-  <p>但这个结论有三个成立条件，缺一不可：</p>
+  <p>三个成立条件，缺一不可：</p>
   <ol>
     <li><strong>秩要足够</strong>。过小的秩（如 \(r=4\)）仍会成为瓶颈。</li>
     <li><strong>要作用在所有线性层</strong>，包括 MLP，而不只是注意力的 \(q, v\) 投影。这一条在实践中最常被违反。</li>
-    <li><strong>学习率需要相应调整</strong>，通常比全参数高约一个数量级。</li>
+    <li><strong>学习率需相应调整</strong>，通常比全参数高约一个数量级。</li>
   </ol>
 
-  <h3 id="s5-6">5.6 序列长度：多轮场景真正的瓶颈</h3>
+  <h3 id="s6-6">6.6 序列长度：多轮场景真正的瓶颈</h3>
 
-  <p>激活值显存大致正比于 \(O(b \cdot L \cdot d \cdot n_{\text{layers}})\)，而注意力部分含 \(O(L^2)\) 项。多轮轨迹的长度是累加的：</p>
+  <p>激活值显存大致正比于 \(O(b \cdot L \cdot d \cdot n_{\text{layers}})\)，注意力部分含 \(O(L^2)\) 项。多轮轨迹的长度是累加的：</p>
 
   \[ L_{\text{total}} = L_{\text{prompt}} + \sum_{k=1}^{T} \big( L_{a_k} + L_{o_k} \big) \]
 
-  <p>其中环境返回 \(L_{o_k}\) 完全不受模型控制，只受你的截断策略控制。几轮下来轻易进入 8k–16k 区间。</p>
+  <p>其中环境返回 \(L_{o_k}\) 完全不受模型控制，只受截断策略控制。几轮下来轻易进入 8k–16k 区间。可控的旋钮只有四个：</p>
 
-  <p>可控的旋钮只有四个：</p>
-  <pre><code>上下文构造      只注入必要信息，而非全量上下文
-环境返回截断     行数 / 字段宽度 / 单元格字符数三重上限
-轮数上限        T
-响应长度硬上限   max_response_length + overlong 处理（2.6 ④）</code></pre>
+<pre><code>上下文构造        只注入必要信息，而非全量上下文
+环境返回截断      行数 / 字段宽度 / 单元格字符数三重上限
+轮数上限          T
+响应长度硬上限     max_response_length + overlong 处理（4.6 ④）</code></pre>
 
   <div class="box warn">
     <span class="lbl">顺序不能反</span>
-    <p><strong>先估算长度预算，再决定模型规模与硬件。</strong> 反过来必然 OOM。多轮 RL 中显存不足的直接原因通常是序列长度，而不是模型大小——把 3B 换成 1.5B 只省下几 GB 的静态占用，而一条 16k 的轨迹带来的激活值可能是这个数字的数倍。</p>
+    <p><strong>先估算长度预算，再决定模型规模与硬件。</strong> 反过来必然 OOM。多轮 RL 中显存不足的直接原因通常是序列长度而非模型大小——把 3B 换成 1.5B 只省下几 GB 静态占用，而一条 16k 轨迹带来的激活值可能是这个数字的数倍。</p>
   </div>
 
-  <h3 id="s5-7">5.7 分布式与消费级硬件</h3>
+  <h3 id="s6-7">6.7 分布式与消费级硬件</h3>
 
   <p>RL 框架通常构建在任务调度层（如 Ray）之上，把 rollout worker、actor、reward 计算组织成可独立伸缩的角色。集合通信（NCCL）承担参数同步与梯度归约。</p>
 
-  <p>消费级显卡上有一类特定的故障：<strong>驱动禁用了 GPU 之间的 P2P 直连</strong>，导致多卡通信初始化挂死。典型症状是进程停在 <code>init_process_group</code> 或第一次 all-reduce，<strong>不报错、不退出、无任何输出</strong>。</p>
+  <p>消费级显卡上有一类特定故障：<strong>驱动禁用了 GPU 之间的 P2P 直连</strong>，导致多卡 NCCL 初始化挂死。典型症状是进程停在 <code>init_process_group</code> 或第一次 all-reduce，<strong>不报错、不退出、无任何输出</strong>。</p>
 
-  <pre><code>NCCL_P2P_DISABLE=1      # 消费级显卡首选
+<pre><code>NCCL_P2P_DISABLE=1      # 消费级显卡首选
 NCCL_IB_DISABLE=1       # 无 InfiniBand 环境
 NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
 
-  <p>见到上述症状应先尝试这些环境变量，而不是去怀疑自己的代码——这是一个环境问题，不是实现问题。</p>
+  <p>见到上述症状应先尝试这些环境变量，而不是怀疑自己的代码——这是环境问题，不是实现问题。</p>
 </section>
 
-<!-- ==================== PART 6 ==================== -->
-<section class="part" id="p6">
+<!-- ==================== PART 7 ==================== -->
+<section class="part" id="p7">
   <div class="part-head">
-    <div class="part-num">Part 06</div>
+    <div class="part-num">Part 07</div>
     <h2>方法族的边界</h2>
     <p class="part-sub">这套方法不解决什么</p>
   </div>
@@ -906,7 +1049,7 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
       <tr>
         <td>大规模异步 off-policy</td>
         <td>rollout 与训练完全解耦，用经验回放池，容忍数据显著陈旧</td>
-        <td>需要大规模集群才有意义；引入的 off-policy 修正问题是另一个层次的话题</td>
+        <td>需要大规模集群才有意义；引入的 off-policy 修正问题是另一个层次</td>
       </tr>
       <tr>
         <td>带 LLM 用户模拟器的训练</td>
@@ -921,7 +1064,7 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
       <tr>
         <td>过程奖励模型（PRM）</td>
         <td>训练模型对推理的每一步打分，提供稠密监督</td>
-        <td>需要步骤级标注或昂贵的自动标注流程；且 PRM 自身可被 hack，回到了 RM 的问题</td>
+        <td>需要步骤级标注或昂贵的自动标注流程；且 PRM 自身可被 hack，回到 RM 的问题</td>
       </tr>
     </tbody>
   </table></div>
@@ -929,12 +1072,37 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
   <p>一个有用的自省问题：<strong>如果资源不再是约束，最先应该补上哪一块？</strong> 对于以可验证任务为主的技术路线，答案通常是<em>环境的丰富度</em>而非算法的复杂度——更多样、更真实、验证更可靠的环境，比又一个 advantage 估计的变体更能提升最终能力。</p>
 </section>
 
-<!-- ==================== REFS ==================== -->
-<section class="part" id="refs">
+<!-- ==================== APPENDIX ==================== -->
+<section class="part" id="appendix">
   <div class="part-head">
     <div class="part-num">附录</div>
-    <h2>参考文献</h2>
+    <h2>记号与文献</h2>
   </div>
+
+  <h3 id="notation">A. 记号表</h3>
+
+  <div class="tw"><table>
+    <thead><tr><th>符号</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr><td class="num">\(x \sim \mathcal{D}\)</td><td>prompt，从数据分布采样</td></tr>
+      <tr><td class="num">\(y\), \(y_t\), \(y_{&lt;t}\)</td><td>回复；第 \(t\) 个 token；前 \(t-1\) 个 token</td></tr>
+      <tr><td class="num">\(\pi_\theta\)</td><td>当前策略（正在被训练的模型）</td></tr>
+      <tr><td class="num">\(\pi_{\theta_{\text{old}}}\)</td><td>行为策略（采出这批数据的那个模型）</td></tr>
+      <tr><td class="num">\(\pi_{\text{ref}}\)</td><td>参考策略（通常是 RL 起点的 SFT 模型）</td></tr>
+      <tr><td class="num">\(R(x,y)\)</td><td>奖励函数，返回标量</td></tr>
+      <tr><td class="num">\(A\)</td><td>advantage</td></tr>
+      <tr><td class="num">\(V(x)\)</td><td>状态值：当前策略在该 prompt 上的期望回报</td></tr>
+      <tr><td class="num">\(G\)</td><td>group size：同一 prompt 采样的回复条数</td></tr>
+      <tr><td class="num">\(\epsilon\)</td><td>clip 范围</td></tr>
+      <tr><td class="num">\(\beta\)</td><td>KL 正则系数</td></tr>
+      <tr><td class="num">\(\tau\)</td><td>轨迹（多轮场景）</td></tr>
+      <tr><td class="num">\(a_k\), \(o_k\)</td><td>第 \(k\) 轮的模型输出 / 环境返回</td></tr>
+      <tr><td class="num">\(h_k\)</td><td>第 \(k\) 轮结束时的完整历史</td></tr>
+      <tr><td class="num">\(P\), \(P_a\)</td><td>模型参数量 / LoRA adapter 参数量</td></tr>
+    </tbody>
+  </table></div>
+
+  <h3 id="refs">B. 参考文献</h3>
 
   <ol class="refs">
     <li>Williams, R. J. <em>Simple statistical gradient-following algorithms for connectionist reinforcement learning.</em> Machine Learning, 1992.（REINFORCE）</li>
@@ -966,7 +1134,6 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
 
 <script>
 (function () {
-  // 侧栏目录：从页首目录克隆，避免维护两份
   var toc = document.querySelector('.toc > ol');
   var rail = document.getElementById('rail');
   if (!toc || !rail) return;
@@ -977,7 +1144,6 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
   rail.appendChild(h);
   rail.appendChild(toc.cloneNode(true));
 
-  // 滚动高亮：记录每个锚点的位置，取当前视口顶部之上最近的一个
   var links = Array.prototype.slice.call(rail.querySelectorAll('a[href^="#"]'));
   var targets = links
     .map(function (a) {
@@ -986,8 +1152,7 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
     .filter(function (t) { return t.el; });
   if (!targets.length) return;
 
-  var current = null;
-  var ticking = false;
+  var current = null, ticking = false;
 
   function update() {
     ticking = false;
@@ -1002,7 +1167,6 @@ NCCL_DEBUG=INFO         # 排障时打开，定位卡在哪一步</code></pre>
     found.link.classList.add('active');
     current = found;
 
-    // 保证高亮项在侧栏可视范围内
     var r = found.link.getBoundingClientRect(), rr = rail.getBoundingClientRect();
     if (r.top < rr.top || r.bottom > rr.bottom) {
       rail.scrollTop += r.top - rr.top - rr.height / 3;
