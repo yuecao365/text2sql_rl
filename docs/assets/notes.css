@@ -1,0 +1,205 @@
+/* ===========================================================
+   Agentic RL Notes — shared stylesheet
+   =========================================================== */
+
+:root{
+  --ground:#F5F5F1; --surface:#FFFFFF; --surface-2:#EBECE5;
+  --ink:#191C18; --ink-2:#4B5149; --ink-3:#7C8379;
+  --rule:#DBDCD2; --rule-soft:#E7E8E0;
+  --accent:#2F5D50; --accent-soft:#E3EDE8;
+  --warn:#96552A; --warn-soft:#F6E9DD;
+  --code-bg:#EEF0E9;
+  --measure:70ch;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --ground:#14170F; --surface:#1B1F17; --surface-2:#222719;
+    --ink:#E9EBE1; --ink-2:#AAB2A3; --ink-3:#7B8377;
+    --rule:#2C3228; --rule-soft:#242A20;
+    --accent:#8FC7AF; --accent-soft:#1E2C25;
+    --warn:#D89B6B; --warn-soft:#2E241A;
+    --code-bg:#1E2318;
+  }
+}
+
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto;}}
+
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:'Source Sans 3','Noto Sans SC',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  font-size:17px; line-height:1.75;
+  -webkit-text-size-adjust:100%; -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- top bar ---------- */
+.topbar{
+  border-bottom:1px solid var(--rule); background:var(--ground);
+  position:sticky; top:0; z-index:20;
+}
+.topbar .inner{
+  max-width:var(--measure); margin:0 auto; padding:.85rem 1.5rem;
+  display:flex; gap:1.5rem; align-items:baseline; font-size:.84rem;
+}
+.topbar a{color:var(--ink-2); text-decoration:none;}
+.topbar a:hover{color:var(--accent);}
+.topbar .here{font-weight:700; color:var(--ink);}
+.topbar .spacer{flex:1;}
+
+/* ---------- layout ---------- */
+.wrap{max-width:var(--measure); margin:0 auto; padding:0 1.5rem 7rem;}
+
+/* ---------- masthead ---------- */
+.mast{padding:4.5rem 0 2rem; border-bottom:2px solid var(--ink); margin-bottom:2.5rem;}
+.mast .eyebrow{
+  font-size:.7rem; letter-spacing:.2em; text-transform:uppercase;
+  color:var(--accent); font-weight:700; margin-bottom:1rem;
+}
+h1{
+  font-family:'Spectral',Georgia,'Songti SC',serif; font-weight:700;
+  font-size:clamp(2.1rem,5.5vw,3.1rem); line-height:1.1; letter-spacing:-.015em;
+  margin:0 0 1rem; text-wrap:balance;
+}
+.mast .dek{font-size:1.06rem; color:var(--ink-2); margin:0 0 1.5rem;}
+.mast .meta{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:.75rem;
+  color:var(--ink-3); display:flex; flex-wrap:wrap; gap:.4rem 1.5rem;
+}
+
+/* ---------- table of contents ---------- */
+.toc{
+  border:1px solid var(--rule); border-radius:2px; padding:1.6rem 1.5rem 1.3rem;
+  margin:0 0 3.5rem; position:relative; background:transparent;
+}
+.toc > .toc-title{
+  position:absolute; top:-.66em; left:1.1rem; background:var(--ground); padding:0 .55rem;
+  font-size:.67rem; font-weight:700; letter-spacing:.15em; text-transform:uppercase; color:var(--accent);
+}
+.toc ol{list-style:none; margin:0; padding:0; counter-reset:part;}
+.toc > ol > li{counter-increment:part; margin-bottom:.5rem;}
+.toc > ol > li > a{
+  font-family:'Spectral',Georgia,serif; font-weight:600; font-size:1.02rem;
+  color:var(--ink); text-decoration:none; display:block;
+}
+.toc > ol > li > a::before{
+  content:counter(part,decimal-leading-zero) "  ";
+  font-family:'JetBrains Mono',monospace; font-size:.76rem; font-weight:500;
+  color:var(--accent); letter-spacing:.05em;
+}
+.toc > ol > li > a:hover{color:var(--accent);}
+.toc ul{list-style:none; margin:.15rem 0 .9rem; padding-left:2.35rem;
+  display:flex; flex-wrap:wrap; gap:.1rem 1.1rem;}
+.toc ul li{font-size:.85rem;}
+.toc ul a{color:var(--ink-3); text-decoration:none;}
+.toc ul a:hover{color:var(--accent);}
+
+/* ---------- sections ---------- */
+section.part{margin-bottom:4.5rem; scroll-margin-top:4.5rem;}
+.part-head{margin-bottom:2rem; padding-bottom:1rem; border-bottom:1px solid var(--rule);}
+.part-num{
+  font-family:'JetBrains Mono',monospace; font-size:.72rem; font-weight:500;
+  letter-spacing:.12em; color:var(--accent); text-transform:uppercase;
+}
+h2{
+  font-family:'Spectral',Georgia,'Songti SC',serif; font-weight:700;
+  font-size:clamp(1.6rem,3.6vw,2.05rem); line-height:1.2; letter-spacing:-.012em;
+  margin:.45rem 0 .5rem; text-wrap:balance;
+}
+.part-sub{font-size:.88rem; color:var(--ink-3); margin:0;}
+h3{
+  font-family:'Spectral',Georgia,'Songti SC',serif; font-weight:600;
+  font-size:1.3rem; line-height:1.32; margin:2.8rem 0 .8rem;
+  text-wrap:balance; scroll-margin-top:4.5rem;
+}
+h4{font-weight:700; font-size:1rem; margin:1.8rem 0 .45rem; color:var(--ink);}
+p{margin:0 0 1.1rem;}
+a{color:var(--accent); text-decoration-thickness:1px; text-underline-offset:2px;}
+a:focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px;}
+strong{font-weight:700; color:var(--ink);}
+ul,ol{margin:0 0 1.2rem; padding-left:1.4rem;}
+li{margin-bottom:.5rem;}
+li::marker{color:var(--ink-3);}
+
+/* ---------- math ---------- */
+mjx-container[display="true"]{
+  margin:1.5rem 0 !important; overflow-x:auto; overflow-y:hidden;
+  padding:.35rem .2rem;
+}
+mjx-container{color:var(--ink);}
+
+/* 宽公式允许适度破格，超出正文测量宽度，减少横向滚动 */
+@media (min-width:900px){
+  mjx-container[display="true"]{
+    margin-left:calc(-1 * clamp(0px, 7vw, 110px)) !important;
+    margin-right:calc(-1 * clamp(0px, 7vw, 110px)) !important;
+  }
+}
+
+/* ---------- code ---------- */
+code{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:.84em;
+  background:var(--code-bg); padding:.13em .38em; border-radius:2px;
+}
+pre{
+  font-family:'JetBrains Mono',ui-monospace,monospace; font-size:.8rem; line-height:1.75;
+  background:var(--code-bg); border:1px solid var(--rule); border-radius:2px;
+  padding:1rem 1.15rem; overflow-x:auto; margin:1.5rem 0; color:var(--ink);
+}
+pre code{background:none; padding:0; font-size:1em;}
+
+/* ---------- callout boxes ---------- */
+.box{
+  position:relative; border:1px solid var(--rule); border-radius:2px;
+  padding:1.7rem 1.35rem 1.2rem; margin:2.2rem 0; background:transparent;
+}
+.box > .lbl{
+  position:absolute; top:-.66em; left:1.05rem; background:var(--ground); padding:0 .55rem;
+  font-size:.67rem; font-weight:700; letter-spacing:.15em; text-transform:uppercase;
+  color:var(--accent);
+}
+.box.key{background:var(--accent-soft); border-color:var(--accent);}
+.box.key > .lbl{background:var(--accent-soft);}
+.box.warn{background:var(--warn-soft); border-color:var(--warn);}
+.box.warn > .lbl{background:var(--warn-soft); color:var(--warn);}
+.box > *:last-child{margin-bottom:0;}
+
+.lede{
+  font-size:1.04rem; color:var(--ink-2);
+  border-left:2px solid var(--accent); padding-left:1.15rem; margin:0 0 2.2rem;
+}
+
+/* ---------- tables ---------- */
+.tw{overflow-x:auto; margin:1.7rem 0; border:1px solid var(--rule); border-radius:2px;}
+table{border-collapse:collapse; width:100%; font-size:.87rem; background:var(--surface);}
+th,td{text-align:left; padding:.7rem .85rem; border-bottom:1px solid var(--rule-soft); vertical-align:top;}
+thead th{
+  background:var(--surface-2); font-size:.68rem; letter-spacing:.09em; text-transform:uppercase;
+  color:var(--ink-2); font-weight:700; white-space:nowrap; border-bottom:1px solid var(--rule);
+}
+tbody tr:last-child td{border-bottom:none;}
+td.num{font-family:'JetBrains Mono',monospace; font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+/* ---------- references ---------- */
+.refs{list-style:none; padding-left:0; counter-reset:ref; font-size:.88rem;}
+.refs li{counter-increment:ref; position:relative; padding-left:2.5rem; margin-bottom:.7rem; color:var(--ink-2);}
+.refs li::before{
+  content:"[" counter(ref) "]"; position:absolute; left:0; top:0;
+  font-family:'JetBrains Mono',monospace; font-size:.76rem; color:var(--accent);
+}
+
+/* ---------- index page cards ---------- */
+.cards{display:grid; gap:1px; background:var(--rule); border:1px solid var(--rule); border-radius:2px; margin:2.5rem 0;}
+.card{background:var(--ground); padding:1.4rem 1.4rem 1.3rem; text-decoration:none; display:block; color:inherit;}
+.card:hover{background:var(--surface);}
+.card .card-k{font-family:'JetBrains Mono',monospace; font-size:.7rem; letter-spacing:.1em; text-transform:uppercase; color:var(--accent);}
+.card h3{font-size:1.18rem; margin:.4rem 0 .35rem;}
+.card p{font-size:.9rem; color:var(--ink-2); margin:0;}
+.card.soon{opacity:.5;}
+.card.soon:hover{background:var(--ground); cursor:default;}
+
+footer.site{
+  border-top:2px solid var(--ink); padding:2.2rem 0 4rem;
+  font-size:.83rem; color:var(--ink-3);
+}
+footer.site p{margin:0 0 .5rem;}

@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notes — text2sql_rl</title>
+<meta name="description" content="Agentic RL 学习笔记：理论推导、实现记录与踩坑总结。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;0,700;1,400&family=Source+Sans+3:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="assets/notes.css">
+</head>
+<body>
+
+<div class="topbar"><div class="inner">
+  <span class="here">Notes</span>
+  <span class="spacer"></span>
+  <a href="https://github.com/yuecao365/text2sql_rl">GitHub</a>
+</div></div>
+
+<div class="wrap">
+
+<header class="mast">
+  <div class="eyebrow">text2sql_rl</div>
+  <h1>Agentic RL 学习笔记</h1>
+  <p class="dek">围绕一个多轮执行反馈的 Text-to-SQL agent 训练项目整理的笔记。理论部分独立成篇、尽量通用；实现与踩坑部分随项目推进补充。</p>
+  <div class="meta">
+    <span>Yue Cao</span>
+    <span>最后更新 2026-09</span>
+  </div>
+</header>
+
+<div class="cards">
+  <a class="card" href="theory.html">
+    <div class="card-k">Theory</div>
+    <h3>Agentic RL 理论笔记</h3>
+    <p>从策略梯度的 baseline 定理，推到 PPO 的 clip、GRPO 的 group baseline、DAPO 与 Dr. GRPO 的修正，再到多轮场景的 observation masking、credit assignment、RLVR 奖励设计与训练基础设施。</p>
+  </a>
+  <div class="card soon">
+    <div class="card-k">Implementation · 待补</div>
+    <h3>环境与奖励的实现</h3>
+    <p>SQLite 沙箱工具环境、多轮驱动循环、快速验证器与官方评测套件的一致性校验。</p>
+  </div>
+  <div class="card soon">
+    <div class="card-k">Engineering · 待补</div>
+    <h3>消费级硬件上的训练记录</h3>
+    <p>显存预算、mask 验证、异常轨迹监控，以及训练不收敛时的排查顺序。</p>
+  </div>
+</div>
+
+<footer class="site">
+  <p>源码与笔记均在 <a href="https://github.com/yuecao365/text2sql_rl">github.com/yuecao365/text2sql_rl</a>。</p>
+</footer>
+
+</div>
+</body>
+</html>
